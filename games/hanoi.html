@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tower of Hanoi 3D - Gesture Control</title>
+    <meta name="description"
+        content="A 3D Tower of Hanoi puzzle game with hand gesture control using MediaPipe and Three.js">
+    <link rel="stylesheet" href="../css/main.css">
+    <link rel="stylesheet" href="../css/hanoi-game.css">
+</head>
+
+<body>
+    <!-- Back Button -->
+    <a href="../index.html" class="back-btn">← Back to Hub</a>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div id="loading-text">Loading MediaPipe...</div>
+    </div>
+
+    <!-- Game Container -->
+    <div id="game-container">
+        <canvas id="three-canvas"></canvas>
+    </div>
+
+    <!-- UI Overlay -->
+    <div id="ui-overlay">
+        <div class="ui-panel stats-panel">
+            <div class="stat-item">
+                <div class="stat-label">Moves</div>
+                <div class="stat-value" id="move-count">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Time</div>
+                <div class="stat-value" id="timer">00:00</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Minimum</div>
+                <div class="stat-value" id="min-moves">7</div>
+            </div>
+        </div>
+
+        <div class="ui-panel controls-panel">
+            <div class="control-group">
+                <div class="control-label">Disks</div>
+                <input type="range" id="disk-slider" min="3" max="7" value="3">
+                <div class="slider-value"><span id="disk-count">3</span> Disks</div>
+            </div>
+            <div class="control-group">
+                <div class="toggle-container">
+                    <span class="control-label">Gesture Mode</span>
+                    <div class="toggle-switch" id="gesture-toggle"></div>
+                </div>
+            </div>
+            <button class="btn btn-primary" id="restart-btn">Restart</button>
+        </div>
+    </div>
+
+    <!-- Webcam Preview -->
+    <div id="webcam-container" class="hidden">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="webcam-canvas"></canvas>
+    </div>
+
+    <!-- Gesture Indicator -->
+    <div id="gesture-indicator" class="hidden">
+        <div class="gesture-icon open" id="gesture-icon">✋</div>
+        <span id="gesture-text">Open Hand</span>
+    </div>
+
+    <!-- Instructions -->
+    <div id="instructions">
+        <h3>How to Play</h3>
+        <p id="instructions-text">Click and drag disks to move them between rods. Only smaller disks can be placed on
+            larger ones!</p>
+    </div>
+
+    <!-- Win Overlay -->
+    <div id="win-overlay">
+        <div class="win-title">🎉 YOU WIN! 🎉</div>
+        <div class="win-stats" id="win-stats">Moves: 0 | Time: 00:00</div>
+        <button class="btn btn-primary" id="play-again-btn">Play Again</button>
+    </div>
+
+    <!-- Message Toast -->
+    <div id="message-toast">Invalid Move!</div>
+
+    <!-- Cursor Indicator -->
+    <div id="cursor-indicator"></div>
+
+    <!-- Disk Selection Indicator -->
+    <div id="disk-selection-indicator">
+        <div class="disk-preview" id="disk-preview"></div>
+        <span class="selection-text">Disk Selected - Drag to Move!</span>
+    </div>
+
+    <!-- Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // ==================== ONE EURO FILTER (Signal Optimization) ====================
+        class LowPassFilter {
+            constructor(alpha) { this.alpha = alpha; this.initialized = false; this.hatXPrev = 0; }
+            filter(x) {
+                if (!this.initialized) { this.initialized = true; this.hatXPrev = x; return x; }
+                const hatX = this.alpha * x + (1 - this.alpha) * this.hatXPrev;
+                this.hatXPrev = hatX;
+                return hatX;
+            }
+            setAlpha(alpha) { this.alpha = alpha; }
+            reset() { this.initialized = false; }
+        }
+
+        class OneEuroFilter {
+            constructor(freq, minCutoff = 1.0, beta = 0.007, dCutoff = 1.0) {
+                this.freq = freq; this.minCutoff = minCutoff; this.beta = beta; this.dCutoff = dCutoff;
+                this.xFilter = new LowPassFilter(this._alpha(minCutoff));
+                this.dxFilter = new LowPassFilter(this._alpha(dCutoff));
+                this.lastTime = null;
+            }
+            _alpha(cutoff) {
+                const te = 1.0 / this.freq;
+                const tau = 1.0 / (2 * Math.PI * cutoff);
+                return 1.0 / (1.0 + tau / te);
+            }
+            filter(x, timestamp = null) {
+                if (timestamp !== null && this.lastTime !== null) {
+                    const dt = (timestamp - this.lastTime) / 1000;
+                    if (dt > 0) this.freq = 1.0 / dt;
+                }
+                this.lastTime = timestamp;
+                const dx = this.xFilter.initialized ? (x - this.xFilter.hatXPrev) * this.freq : 0;
+                const edx = this.dxFilter.filter(dx);
+                const cutoff = this.minCutoff + this.beta * Math.abs(edx);
+                this.xFilter.setAlpha(this._alpha(cutoff));
+                return this.xFilter.filter(x);
+            }
+            reset() { this.xFilter.reset(); this.dxFilter.reset(); this.lastTime = null; }
+        }
+
+        // 2D Filter for hand position (X, Y)
+        class OneEuroFilter2D {
+            constructor(freq, minCutoff = 1.0, beta = 0.007, dCutoff = 1.0) {
+                this.xFilter = new OneEuroFilter(freq, minCutoff, beta, dCutoff);
+                this.yFilter = new OneEuroFilter(freq, minCutoff, beta, dCutoff);
+            }
+            filter(x, y, timestamp = null) {
+                return { x: this.xFilter.filter(x, timestamp), y: this.yFilter.filter(y, timestamp) };
+            }
+            reset() { this.xFilter.reset(); this.yFilter.reset(); }
+        }
+
+        // ==================== CONFIGURATION ====================
+        const CONFIG = {
+            diskColors: ['#ff6b6b', '#ffa502', '#ffd93d', '#6bcb77', '#4d96ff', '#9b59b6', '#e84393'],
+            diskMinRadius: 0.3, diskMaxRadius: 1.0, diskHeight: 0.25, diskGap: 0.02,
+            rodHeight: 3, rodRadius: 0.08, rodPositions: [-3, 0, 3],
+            PINCH_THRESHOLD: 0.06, liftHeight: 2.5, animationSpeed: 0.15
+        };
+
+        // ==================== ONE EURO FILTERS (Initialized) ====================
+        // Hanoi: Cần mượt để grab disk chính xác
+        const positionFilter = new OneEuroFilter2D(30, 0.5, 0.01, 1.0);  // minCutoff=0.5, beta=0.01
+
+        // ==================== OPTICAL FLOW (Phase 2) ====================
+        class OpticalFlow {
+            constructor(windowSize = 11, pyramidLevels = 3) {
+                this.windowSize = windowSize;
+                this.halfWindow = Math.floor(windowSize / 2);
+                this.pyramidLevels = pyramidLevels;
+                this.prevFrame = null;
+                this.canvas = document.createElement('canvas');
+                this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+            }
+
+            getGrayscaleFrame(source) {
+                const width = source.videoWidth || source.width;
+                const height = source.videoHeight || source.height;
+                if (this.canvas.width !== width) { this.canvas.width = width; this.canvas.height = height; }
+                this.ctx.drawImage(source, 0, 0, width, height);
+                const imageData = this.ctx.getImageData(0, 0, width, height);
+                const gray = new Float32Array(width * height);
+                for (let i = 0; i < gray.length; i++) {
+                    const idx = i * 4;
+                    gray[i] = 0.299 * imageData.data[idx] + 0.587 * imageData.data[idx + 1] + 0.114 * imageData.data[idx + 2];
+                }
+                return { data: gray, width, height };
+            }
+
+            getSubPixel(frame, x, y) {
+                x = Math.max(0, Math.min(frame.width - 1, x));
+                y = Math.max(0, Math.min(frame.height - 1, y));
+                const x0 = Math.floor(x), y0 = Math.floor(y);
+                if (x0 >= frame.width - 1 || y0 >= frame.height - 1) return frame.data[y0 * frame.width + x0];
+                const dx = x - x0, dy = y - y0;
+                const p00 = frame.data[y0 * frame.width + x0];
+                const p10 = frame.data[y0 * frame.width + x0 + 1];
+                const p01 = frame.data[(y0 + 1) * frame.width + x0];
+                const p11 = frame.data[(y0 + 1) * frame.width + x0 + 1];
+                return p00 * (1 - dx) * (1 - dy) + p10 * dx * (1 - dy) + p01 * (1 - dx) * dy + p11 * dx * dy;
+            }
+
+            trackPoint(prevFrame, currFrame, px, py) {
+                const hw = this.halfWindow;
+                let ux = 0, uy = 0;
+                for (let iter = 0; iter < 10; iter++) {
+                    let sxx = 0, syy = 0, sxy = 0, sxt = 0, syt = 0;
+                    for (let wy = -hw; wy <= hw; wy++) {
+                        for (let wx = -hw; wx <= hw; wx++) {
+                            const x = px + wx, y = py + wy;
+                            if (x < 1 || x >= prevFrame.width - 1 || y < 1 || y >= prevFrame.height - 1) continue;
+                            const idx = Math.floor(y) * prevFrame.width + Math.floor(x);
+                            const ix = (prevFrame.data[idx + 1] - prevFrame.data[idx - 1]) / 2;
+                            const iy = (prevFrame.data[idx + prevFrame.width] - prevFrame.data[idx - prevFrame.width]) / 2;
+                            const it = this.getSubPixel(currFrame, px + ux + wx, py + uy + wy) - prevFrame.data[idx];
+                            sxx += ix * ix; syy += iy * iy; sxy += ix * iy;
+                            sxt += ix * it; syt += iy * it;
+                        }
+                    }
+                    const det = sxx * syy - sxy * sxy;
+                    if (Math.abs(det) < 1e-6) break;
+                    const du = (syy * (-sxt) - sxy * (-syt)) / det;
+                    const dv = (sxx * (-syt) - sxy * (-sxt)) / det;
+                    ux += du; uy += dv;
+                    if (Math.abs(du) < 0.01 && Math.abs(dv) < 0.01) break;
+                }
+                return { x: px + ux, y: py + uy, error: Math.abs(ux) + Math.abs(uy) < 0.1 ? 0 : 0.1 };
+            }
+
+            track(source, points) {
+                const frame = this.getGrayscaleFrame(source);
+                if (!this.prevFrame) { this.prevFrame = frame; return { points: points.slice(), avgError: 0 }; }
+                const { width, height } = frame;
+                const tracked = [], errors = [];
+                for (const p of points) {
+                    const result = this.trackPoint(this.prevFrame, frame, p.x * width, p.y * height);
+                    tracked.push({ x: Math.max(0, Math.min(1, result.x / width)), y: Math.max(0, Math.min(1, result.y / height)) });
+                    errors.push(result.error);
+                }
+                this.prevFrame = frame;
+                return { points: tracked, avgError: errors.reduce((a, b) => a + b, 0) / errors.length };
+            }
+
+            setKeyframe(source) { this.prevFrame = this.getGrayscaleFrame(source); }
+            reset() { this.prevFrame = null; }
+        }
+
+        // ==================== HYBRID TRACKER (Phase 2) ====================
+        class HybridTracker {
+            constructor(keyframeInterval = 5, maxDriftError = 0.05) {
+                this.keyframeInterval = keyframeInterval;
+                this.maxDriftError = maxDriftError;
+                this.frameCount = 0;
+                this.lastLandmarks = null;
+                this.opticalFlow = new OpticalFlow();
+                this.trackingLost = false;
+                this.metrics = { keyframes: 0, trackingFrames: 0, forcedKeyframes: 0 };
+            }
+
+            shouldRunKeyframe() {
+                return !this.lastLandmarks || this.trackingLost || (this.frameCount % this.keyframeInterval === 0);
+            }
+
+            handleKeyframe(landmarks, videoElement) {
+                this.lastLandmarks = landmarks.map(l => ({ x: l.x, y: l.y, z: l.z || 0 }));
+                this.trackingLost = false;
+                this.opticalFlow.setKeyframe(videoElement);
+                this.metrics.keyframes++;
+                this.frameCount++;
+                return { points: landmarks, method: 'mediapipe', isKeyframe: true };
+            }
+
+            runTracking(videoElement) {
+                if (!this.lastLandmarks) return { points: null, method: 'none', isKeyframe: false };
+                const result = this.opticalFlow.track(videoElement, this.lastLandmarks);
+                if (result.avgError > this.maxDriftError) {
+                    this.trackingLost = true;
+                    this.metrics.forcedKeyframes++;
+                }
+                this.lastLandmarks = result.points;
+                this.metrics.trackingFrames++;
+                this.frameCount++;
+                const mediaPipeFormat = result.points.map((p, i) => ({
+                    x: p.x, y: p.y, z: this.lastLandmarks[i]?.z || 0
+                }));
+                return { points: mediaPipeFormat, method: 'optical-flow', isKeyframe: false, error: result.avgError };
+            }
+
+            getStats() {
+                const total = this.metrics.keyframes + this.metrics.trackingFrames;
+                return {
+                    cpuSaved: total > 0 ? Math.round(this.metrics.trackingFrames / total * 100) : 0,
+                    ...this.metrics
+                };
+            }
+
+            reset() { this.frameCount = 0; this.lastLandmarks = null; this.opticalFlow.reset(); this.trackingLost = false; }
+        }
+
+        // ==================== HYBRID TRACKER INSTANCE ====================
+        const hybridTracker = new HybridTracker(5, 0.05);  // Keyframe every 5 frames, drift threshold 0.05
+        let useHybridTracking = false;  // Toggle for hybrid mode
+
+        // ==================== GAME STATE ====================
+        const gameState = {
+            numDisks: 3, rods: [[], [], []], disks: [], moveCount: 0,
+            startTime: null, timerInterval: null, isPlaying: false, gestureMode: false,
+            selectedDisk: null, selectedDiskOriginalRod: null, isDragging: false,
+            isPinching: false, handPosition: { x: 0.5, y: 0.5 }, smoothedHandPosition: { x: 0.5, y: 0.5 },
+            lastPinchState: false, pinchBuffer: [], PINCH_BUFFER_SIZE: 5,
+            DISK_FOLLOW_SPEED: 0.15, targetDiskPosition: { x: 0, z: 0 }, animations: []
+        };
+
+        // ==================== THREE.JS ====================
+        let scene, camera, renderer, controls, raycaster, mouse, cursor3D;
+
+        // ==================== DOM CACHE ====================
+        const DOM = {
+            moveCount: null, timer: null, minMoves: null, diskSlider: null, diskCount: null,
+            winOverlay: null, winStats: null, messageToast: null, loadingOverlay: null, loadingText: null,
+            diskSelectionIndicator: null, diskPreview: null
+        };
+
+        function initDOMCache() {
+            DOM.moveCount = document.getElementById('move-count');
+            DOM.timer = document.getElementById('timer');
+            DOM.minMoves = document.getElementById('min-moves');
+            DOM.diskSlider = document.getElementById('disk-slider');
+            DOM.diskCount = document.getElementById('disk-count');
+            DOM.winOverlay = document.getElementById('win-overlay');
+            DOM.winStats = document.getElementById('win-stats');
+            DOM.messageToast = document.getElementById('message-toast');
+            DOM.loadingOverlay = document.getElementById('loading-overlay');
+            DOM.loadingText = document.getElementById('loading-text');
+            DOM.diskSelectionIndicator = document.getElementById('disk-selection-indicator');
+            DOM.diskPreview = document.getElementById('disk-preview');
+        }
+
+        // ==================== THREE.JS SETUP ====================
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 10, 14);
+            camera.lookAt(0, 1, 0);
+
+            const canvas = document.getElementById('three-canvas');
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'low-power' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFShadowMap;
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2.2;
+            controls.minDistance = 5;
+            controls.maxDistance = 20;
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            setupLighting();
+            createBase();
+            createRods();
+            createCursor3D();
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function setupLighting() {
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            const mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            mainLight.position.set(5, 10, 5);
+            mainLight.castShadow = true;
+            mainLight.shadow.mapSize.width = 1024;
+            mainLight.shadow.mapSize.height = 1024;
+            mainLight.shadow.camera.near = 0.5;
+            mainLight.shadow.camera.far = 30;
+            mainLight.shadow.camera.left = -8;
+            mainLight.shadow.camera.right = 8;
+            mainLight.shadow.camera.top = 8;
+            mainLight.shadow.camera.bottom = -8;
+            scene.add(mainLight);
+
+            const fillLight = new THREE.DirectionalLight(0x00d9ff, 0.3);
+            fillLight.position.set(-5, 5, -5);
+            scene.add(fillLight);
+
+            const backLight = new THREE.DirectionalLight(0xff6b6b, 0.2);
+            backLight.position.set(0, 5, -10);
+            scene.add(backLight);
+        }
+
+        function createBase() {
+            const baseGeo = new THREE.BoxGeometry(12, 0.4, 4);
+            const baseMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.8, metalness: 0.1 });
+            const base = new THREE.Mesh(baseGeo, baseMat);
+            base.position.y = -0.2;
+            base.receiveShadow = true;
+            scene.add(base);
+
+            const edgeGeo = new THREE.BoxGeometry(12.2, 0.1, 4.2);
+            const edgeMat = new THREE.MeshStandardMaterial({ color: 0x654321, roughness: 0.7, metalness: 0.2 });
+            const edge = new THREE.Mesh(edgeGeo, edgeMat);
+            edge.position.y = 0.05;
+            scene.add(edge);
+
+            const floorGeo = new THREE.PlaneGeometry(20, 20);
+            const floorMat = new THREE.ShadowMaterial({ opacity: 0.3 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -0.4;
+            floor.receiveShadow = true;
+            scene.add(floor);
+        }
+
+        function createRods() {
+            CONFIG.rodPositions.forEach((xPos, index) => {
+                const rodGeo = new THREE.CylinderGeometry(CONFIG.rodRadius, CONFIG.rodRadius, CONFIG.rodHeight, 16);
+                const rodMat = new THREE.MeshStandardMaterial({ color: 0xC0C0C0, roughness: 0.3, metalness: 0.8 });
+                const rod = new THREE.Mesh(rodGeo, rodMat);
+                rod.position.set(xPos, CONFIG.rodHeight / 2, 0);
+                rod.castShadow = true;
+                rod.userData.rodIndex = index;
+                scene.add(rod);
+
+                const baseGeo = new THREE.CylinderGeometry(0.2, 0.25, 0.1, 16);
+                const baseMat = new THREE.MeshStandardMaterial({ color: 0xA0A0A0, roughness: 0.4, metalness: 0.7 });
+                const rodBase = new THREE.Mesh(baseGeo, baseMat);
+                rodBase.position.set(xPos, 0.05, 0);
+                scene.add(rodBase);
+
+                const topGeo = new THREE.SphereGeometry(0.12, 8, 8);
+                const top = new THREE.Mesh(topGeo, rodMat);
+                top.position.set(xPos, CONFIG.rodHeight, 0);
+                top.castShadow = true;
+                scene.add(top);
+            });
+        }
+
+        function createCursor3D() {
+            const cursorGeo = new THREE.SphereGeometry(0.15, 16, 16);
+            const cursorMat = new THREE.MeshStandardMaterial({
+                color: 0x00d9ff, emissive: 0x00d9ff, emissiveIntensity: 0.5, transparent: true, opacity: 0.8
+            });
+            cursor3D = new THREE.Mesh(cursorGeo, cursorMat);
+            cursor3D.visible = false;
+            scene.add(cursor3D);
+        }
+
+        function createDisks() {
+            gameState.disks.forEach(disk => scene.remove(disk));
+            gameState.disks = [];
+            gameState.rods = [[], [], []];
+
+            const numDisks = gameState.numDisks;
+            const radiusStep = (CONFIG.diskMaxRadius - CONFIG.diskMinRadius) / (numDisks - 1 || 1);
+
+            for (let i = 0; i < numDisks; i++) {
+                const radius = CONFIG.diskMaxRadius - i * radiusStep;
+                const diskGeo = new THREE.CylinderGeometry(radius, radius, CONFIG.diskHeight, 16);
+                const diskMat = new THREE.MeshStandardMaterial({
+                    color: CONFIG.diskColors[i % CONFIG.diskColors.length],
+                    roughness: 0.4, metalness: 0.3,
+                    emissive: CONFIG.diskColors[i % CONFIG.diskColors.length],
+                    emissiveIntensity: 0.1
+                });
+                const disk = new THREE.Mesh(diskGeo, diskMat);
+                disk.castShadow = true;
+                disk.receiveShadow = true;
+                disk.userData = {
+                    diskIndex: i, size: numDisks - i, radius: radius,
+                    originalColor: CONFIG.diskColors[i % CONFIG.diskColors.length]
+                };
+                const yPos = i * (CONFIG.diskHeight + CONFIG.diskGap) + CONFIG.diskHeight / 2;
+                disk.position.set(CONFIG.rodPositions[0], yPos, 0);
+                scene.add(disk);
+                gameState.disks.push(disk);
+                gameState.rods[0].push(i);
+            }
+            DOM.minMoves.textContent = Math.pow(2, numDisks) - 1;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ==================== GAME LOGIC ====================
+        function getDiskRod(diskIndex) {
+            for (let rodIndex = 0; rodIndex < 3; rodIndex++) {
+                if (gameState.rods[rodIndex].includes(diskIndex)) return rodIndex;
+            }
+            return -1;
+        }
+
+        function getNearestRod(xPos) {
+            let nearestRod = 0, minDist = Infinity;
+            CONFIG.rodPositions.forEach((rodX, index) => {
+                const dist = Math.abs(xPos - rodX);
+                if (dist < minDist) { minDist = dist; nearestRod = index; }
+            });
+            return nearestRod;
+        }
+
+        function getStackYPosition(rodIndex) {
+            const stackHeight = gameState.rods[rodIndex].length;
+            return stackHeight * (CONFIG.diskHeight + CONFIG.diskGap) + CONFIG.diskHeight / 2;
+        }
+
+        function isValidMove(diskSize, targetRod) {
+            const targetStack = gameState.rods[targetRod];
+            if (targetStack.length === 0) return true;
+            const topDiskIndex = targetStack[targetStack.length - 1];
+            const topDiskSize = gameState.disks[topDiskIndex].userData.size;
+            return diskSize < topDiskSize;
+        }
+
+        function animateDiskTo(disk, targetX, targetY) {
+            gameState.animations.push({
+                disk, startPos: disk.position.clone(),
+                targetPos: new THREE.Vector3(targetX, targetY, 0), progress: 0, phase: 'lift'
+            });
+        }
+
+        function moveDisk(diskIndex, targetRod, isValid) {
+            const disk = gameState.disks[diskIndex];
+            const currentRod = getDiskRod(diskIndex);
+
+            if (isValid) {
+                const targetStackHeight = gameState.rods[targetRod].length;
+                const targetY = targetStackHeight * (CONFIG.diskHeight + CONFIG.diskGap) + CONFIG.diskHeight / 2;
+                const targetX = CONFIG.rodPositions[targetRod];
+
+                gameState.rods[currentRod].splice(gameState.rods[currentRod].indexOf(diskIndex), 1);
+                gameState.rods[targetRod].push(diskIndex);
+                gameState.moveCount++;
+                DOM.moveCount.textContent = gameState.moveCount;
+                animateDiskTo(disk, targetX, targetY);
+                checkWinCondition();
+            } else {
+                showMessage('Invalid Move!', 'error');
+                const stackIndex = gameState.rods[currentRod].indexOf(diskIndex);
+                const originalY = stackIndex * (CONFIG.diskHeight + CONFIG.diskGap) + CONFIG.diskHeight / 2;
+                animateDiskTo(disk, CONFIG.rodPositions[currentRod], originalY);
+            }
+        }
+
+        function checkWinCondition() {
+            if (gameState.rods[2].length === gameState.numDisks) {
+                gameState.isPlaying = false;
+                clearInterval(gameState.timerInterval);
+                setTimeout(() => {
+                    DOM.winStats.textContent = `Moves: ${gameState.moveCount} | Time: ${DOM.timer.textContent}`;
+                    DOM.winOverlay.classList.add('show');
+                }, 500);
+            }
+        }
+
+        function showMessage(text, type = 'error') {
+            DOM.messageToast.textContent = text;
+            DOM.messageToast.className = 'show' + (type === 'success' ? ' success' : '');
+            setTimeout(() => { DOM.messageToast.classList.remove('show', 'success'); }, 1500);
+        }
+
+        function showDiskSelectionIndicator(disk) {
+            const diskColor = disk.userData.originalColor;
+            DOM.diskPreview.style.backgroundColor = diskColor;
+            DOM.diskPreview.style.color = diskColor;
+            DOM.diskSelectionIndicator.classList.add('show');
+        }
+
+        function hideDiskSelectionIndicator() {
+            DOM.diskSelectionIndicator.classList.remove('show');
+        }
+
+        function startTimer() {
+            if (gameState.startTime) return;
+            gameState.startTime = Date.now();
+            gameState.isPlaying = true;
+            gameState.timerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - gameState.startTime) / 1000);
+                const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+                const seconds = (elapsed % 60).toString().padStart(2, '0');
+                DOM.timer.textContent = `${minutes}:${seconds}`;
+            }, 1000);
+        }
+
+        function restartGame() {
+            gameState.moveCount = 0;
+            gameState.startTime = null;
+            gameState.isPlaying = false;
+            gameState.selectedDisk = null;
+            gameState.isDragging = false;
+            gameState.animations = [];
+            DOM.moveCount.textContent = '0';
+            DOM.timer.textContent = '00:00';
+            DOM.winOverlay.classList.remove('show');
+            if (gameState.timerInterval) clearInterval(gameState.timerInterval);
+            createDisks();
+        }
+
+        // ==================== MOUSE CONTROLS ====================
+        let mouseDown = false, hoveredDisk = null;
+
+        function setupMouseControls() {
+            const canvas = renderer.domElement;
+            canvas.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('mousemove', onMouseMove);
+            canvas.addEventListener('mouseup', onMouseUp);
+            canvas.addEventListener('mouseleave', onMouseUp);
+        }
+
+        function onMouseDown(event) {
+            if (gameState.gestureMode || gameState.animations.length > 0) return;
+            updateMousePosition(event);
+            const intersects = getIntersectedDisks();
+
+            if (intersects.length > 0) {
+                const clickedDisk = intersects[0].object;
+                const diskIndex = clickedDisk.userData.diskIndex;
+                const rodIndex = getDiskRod(diskIndex);
+                const topDiskIndex = gameState.rods[rodIndex][gameState.rods[rodIndex].length - 1];
+
+                if (diskIndex === topDiskIndex) {
+                    mouseDown = true;
+                    gameState.selectedDisk = clickedDisk;
+                    gameState.selectedDiskOriginalRod = rodIndex;
+                    gameState.isDragging = true;
+                    clickedDisk.material.emissiveIntensity = 0.8;
+                    clickedDisk.scale.set(1.05, 1.1, 1.05);
+                    showDiskSelectionIndicator(clickedDisk);
+                    clickedDisk.position.y = CONFIG.liftHeight;
+                    controls.enabled = false;
+                    startTimer();
+                }
+            }
+        }
+
+        function onMouseMove(event) {
+            updateMousePosition(event);
+            if (gameState.gestureMode) return;
+            updateHoveredDisk();
+            if (gameState.isDragging && gameState.selectedDisk) {
+                const worldPos = getMouseWorldPosition();
+                if (worldPos) {
+                    gameState.selectedDisk.position.x = worldPos.x;
+                    gameState.selectedDisk.position.z = worldPos.z;
+                }
+            }
+        }
+
+        function onMouseUp() {
+            if (gameState.gestureMode) return;
+            if (gameState.isDragging && gameState.selectedDisk) {
+                const disk = gameState.selectedDisk;
+                const diskIndex = disk.userData.diskIndex;
+                const diskSize = disk.userData.size;
+                const originalRod = gameState.selectedDiskOriginalRod;
+                const targetRod = getNearestRod(disk.position.x);
+
+                disk.material.emissiveIntensity = 0.1;
+                disk.scale.set(1, 1, 1);
+                hideDiskSelectionIndicator();
+
+                if (targetRod !== originalRod && isValidMove(diskSize, targetRod)) {
+                    moveDisk(diskIndex, targetRod, true);
+                } else if (targetRod !== originalRod) {
+                    moveDisk(diskIndex, originalRod, false);
+                } else {
+                    const yPos = getStackYPosition(originalRod);
+                    animateDiskTo(disk, CONFIG.rodPositions[originalRod], yPos);
+                }
+            }
+            mouseDown = false;
+            gameState.selectedDisk = null;
+            gameState.isDragging = false;
+            controls.enabled = true;
+            hideDiskSelectionIndicator();
+        }
+
+        function updateMousePosition(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        }
+
+        function getIntersectedDisks() {
+            raycaster.setFromCamera(mouse, camera);
+            return raycaster.intersectObjects(gameState.disks);
+        }
+
+        function getMouseWorldPosition() {
+            raycaster.setFromCamera(mouse, camera);
+            const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -CONFIG.liftHeight);
+            const intersection = new THREE.Vector3();
+            if (raycaster.ray.intersectPlane(plane, intersection)) return intersection;
+            return null;
+        }
+
+        function updateHoveredDisk() {
+            if (gameState.isDragging) return;
+            const intersects = getIntersectedDisks();
+
+            if (hoveredDisk && hoveredDisk !== gameState.selectedDisk) {
+                hoveredDisk.material.emissiveIntensity = 0.1;
+            }
+
+            if (intersects.length > 0) {
+                const disk = intersects[0].object;
+                const diskIndex = disk.userData.diskIndex;
+                const rodIndex = getDiskRod(diskIndex);
+                const topDiskIndex = gameState.rods[rodIndex][gameState.rods[rodIndex].length - 1];
+
+                if (diskIndex === topDiskIndex) {
+                    hoveredDisk = disk;
+                    disk.material.emissiveIntensity = 0.3;
+                    document.body.style.cursor = 'grab';
+                } else {
+                    hoveredDisk = null;
+                    document.body.style.cursor = 'default';
+                }
+            } else {
+                hoveredDisk = null;
+                document.body.style.cursor = 'default';
+            }
+        }
+
+        // ==================== MEDIAPIPE ====================
+        let hands, camera2D, canvasCtx, mediaPipeReady = false;
+
+        async function initializeMediaPipe() {
+            const videoElement = document.getElementById('webcam');
+            const canvasElement = document.getElementById('webcam-canvas');
+            canvasCtx = canvasElement.getContext('2d');
+            canvasElement.width = 320;
+            canvasElement.height = 240;
+
+            try {
+                DOM.loadingText.textContent = 'Requesting camera access...';
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480, facingMode: 'user' }
+                });
+                videoElement.srcObject = stream;
+                await new Promise(r => { videoElement.onloadedmetadata = () => { videoElement.play(); r(); }; });
+
+                DOM.loadingText.textContent = 'Initializing hand tracking...';
+                hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+                hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
+                hands.onResults(onHandResults);
+
+                camera2D = new Camera(videoElement, {
+                    onFrame: async () => {
+                        if (!gameState.gestureMode || !hands) return;
+
+                        if (useHybridTracking) {
+                            // HYBRID MODE: Only run MediaPipe on keyframes
+                            if (hybridTracker.shouldRunKeyframe()) {
+                                await hands.send({ image: videoElement });
+                            } else {
+                                // Use Optical Flow tracking
+                                const result = hybridTracker.runTracking(videoElement);
+                                if (result.points) {
+                                    processHybridLandmarks(result.points);
+                                }
+                            }
+                        } else {
+                            // STANDARD MODE: Run MediaPipe every frame
+                            await hands.send({ image: videoElement });
+                        }
+                    },
+                    width: 640, height: 480
+                });
+
+                mediaPipeReady = true;
+                DOM.loadingText.textContent = 'Ready! ✓';
+            } catch (error) {
+                console.error('MediaPipe initialization error:', error);
+                if (error.name === 'NotAllowedError') DOM.loadingText.textContent = 'Camera access denied. Using mouse mode.';
+                else if (error.name === 'NotFoundError') DOM.loadingText.textContent = 'No camera found. Using mouse mode.';
+                else DOM.loadingText.textContent = 'Camera error. Using mouse mode.';
+                mediaPipeReady = false;
+            }
+
+            setTimeout(() => { DOM.loadingOverlay.classList.add('hidden'); }, 800);
+        }
+
+        function onHandResults(results) {
+            if (!gameState.gestureMode) return;
+            const canvasElement = document.getElementById('webcam-canvas');
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+
+                // HYBRID MODE: Store as keyframe
+                if (useHybridTracking) {
+                    hybridTracker.handleKeyframe(landmarks, document.getElementById('webcam'));
+                }
+
+                processLandmarks(landmarks, canvasElement);
+            } else {
+                cursor3D.visible = false;
+                document.getElementById('cursor-indicator').style.display = 'none';
+                gameState.pinchBuffer = [];
+                if (useHybridTracking) hybridTracker.reset();
+            }
+        }
+
+        // Process landmarks (shared by MediaPipe and Hybrid tracking)
+        function processLandmarks(landmarks, canvasElement) {
+            drawHandLandmarks(landmarks, canvasElement);
+
+            const thumbTip = landmarks[4], indexTip = landmarks[8];
+            const pinchDistance = Math.sqrt(Math.pow(thumbTip.x - indexTip.x, 2) + Math.pow(thumbTip.y - indexTip.y, 2) + Math.pow((thumbTip.z || 0) - (indexTip.z || 0), 2) * 0.5);
+            const rawPinching = pinchDistance < CONFIG.PINCH_THRESHOLD;
+
+            gameState.pinchBuffer.push(rawPinching);
+            if (gameState.pinchBuffer.length > gameState.PINCH_BUFFER_SIZE) gameState.pinchBuffer.shift();
+            const pinchCount = gameState.pinchBuffer.filter(Boolean).length;
+            const stabilizedPinching = pinchCount >= Math.ceil(gameState.PINCH_BUFFER_SIZE * 0.6);
+
+            const rawX = 1 - indexTip.x, rawY = indexTip.y;
+            // ONE EURO FILTER: Adaptive smoothing
+            const filtered = positionFilter.filter(rawX, rawY, performance.now());
+            gameState.smoothedHandPosition.x = filtered.x;
+            gameState.smoothedHandPosition.y = filtered.y;
+            gameState.handPosition.x = rawX;
+            gameState.handPosition.y = rawY;
+
+            updateCursor3D(pinchDistance);
+            updateGestureIndicator(stabilizedPinching, pinchDistance);
+            handleGestureState(stabilizedPinching);
+            gameState.lastPinchState = stabilizedPinching;
+        }
+
+        // Process landmarks from Optical Flow (Hybrid mode tracking frames)
+        function processHybridLandmarks(landmarks) {
+            const canvasElement = document.getElementById('webcam-canvas');
+            processLandmarks(landmarks, canvasElement);
+        }
+
+
+        function drawHandLandmarks(landmarks, canvas) {
+            const ctx = canvasCtx, width = canvas.width, height = canvas.height;
+            const connections = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [0, 9], [9, 10], [10, 11], [11, 12], [0, 13], [13, 14], [14, 15], [15, 16], [0, 17], [17, 18], [18, 19], [19, 20], [5, 9], [9, 13], [13, 17]];
+
+            ctx.strokeStyle = 'rgba(0, 217, 255, 0.6)';
+            ctx.lineWidth = 2;
+            connections.forEach(([i, j]) => {
+                ctx.beginPath();
+                ctx.moveTo(landmarks[i].x * width, landmarks[i].y * height);
+                ctx.lineTo(landmarks[j].x * width, landmarks[j].y * height);
+                ctx.stroke();
+            });
+
+            landmarks.forEach((landmark, index) => {
+                ctx.beginPath();
+                ctx.arc(landmark.x * width, landmark.y * height, (index === 4 || index === 8) ? 6 : 3, 0, Math.PI * 2);
+                ctx.fillStyle = (index === 4 || index === 8) ? '#ff6b6b' : '#00d9ff';
+                ctx.fill();
+            });
+        }
+
+        function updateCursor3D(pinchDistance) {
+            const smoothX = gameState.smoothedHandPosition.x, smoothY = gameState.smoothedHandPosition.y;
+            mouse.x = smoothX * 2 - 1;
+            mouse.y = -(smoothY * 2 - 1);
+
+            const cursorIndicator = document.getElementById('cursor-indicator');
+            cursorIndicator.style.display = 'block';
+            cursorIndicator.style.left = `${smoothX * window.innerWidth}px`;
+            cursorIndicator.style.top = `${smoothY * window.innerHeight}px`;
+
+            const pinchProgress = Math.max(0, 1 - (pinchDistance / CONFIG.PINCH_THRESHOLD));
+            cursorIndicator.style.transform = `translate(-50%, -50%) scale(${1 - pinchProgress * 0.3})`;
+            cursorIndicator.style.borderColor = pinchProgress > 0.5 ? '#ffa502' : '#00d9ff';
+
+            raycaster.setFromCamera(mouse, camera);
+            const planeY = gameState.isDragging ? CONFIG.liftHeight : 0;
+            const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
+            const intersection = new THREE.Vector3();
+            if (raycaster.ray.intersectPlane(plane, intersection)) {
+                cursor3D.position.lerp(intersection, 0.3);
+                cursor3D.position.y = planeY + 0.2;
+                cursor3D.visible = true;
+                gameState.targetDiskPosition.x = intersection.x;
+                gameState.targetDiskPosition.z = intersection.z;
+            }
+        }
+
+        function updateGestureIndicator(isPinching, pinchDistance) {
+            const gestureIcon = document.getElementById('gesture-icon'), gestureText = document.getElementById('gesture-text');
+            const cursorIndicator = document.getElementById('cursor-indicator');
+
+            if (isPinching) {
+                cursorIndicator.classList.add('grabbing');
+                gestureIcon.className = 'gesture-icon grabbing';
+                gestureIcon.textContent = '🤏';
+                gestureText.textContent = gameState.isDragging ? 'Holding Disk' : 'Pinching';
+            } else {
+                cursorIndicator.classList.remove('grabbing');
+                const pinchProgress = Math.max(0, 1 - (pinchDistance / CONFIG.PINCH_THRESHOLD));
+                if (pinchProgress > 0.7) { gestureIcon.textContent = '👌'; gestureText.textContent = 'Almost...'; }
+                else { gestureIcon.className = 'gesture-icon open'; gestureIcon.textContent = '✋'; gestureText.textContent = 'Open Hand'; }
+            }
+        }
+
+        function handleGestureState(isPinching) {
+            if (gameState.animations.length > 0) return;
+
+            if (isPinching && !gameState.lastPinchState) {
+                const intersects = getIntersectedDisks();
+                if (intersects.length > 0 && !gameState.isDragging) {
+                    const disk = intersects[0].object;
+                    const diskIndex = disk.userData.diskIndex;
+                    const rodIndex = getDiskRod(diskIndex);
+                    const topDiskIndex = gameState.rods[rodIndex][gameState.rods[rodIndex].length - 1];
+
+                    if (diskIndex === topDiskIndex) {
+                        gameState.selectedDisk = disk;
+                        gameState.selectedDiskOriginalRod = rodIndex;
+                        gameState.isDragging = true;
+                        disk.material.emissiveIntensity = 0.8;
+                        disk.scale.set(1.05, 1.1, 1.05);
+                        disk.position.y = CONFIG.liftHeight;
+                        showDiskSelectionIndicator(disk);
+                        startTimer();
+                    }
+                }
+            }
+
+            if (!isPinching && gameState.lastPinchState) {
+                if (gameState.isDragging && gameState.selectedDisk) {
+                    const disk = gameState.selectedDisk;
+                    const diskIndex = disk.userData.diskIndex;
+                    const diskSize = disk.userData.size;
+                    const originalRod = gameState.selectedDiskOriginalRod;
+                    const targetRod = getNearestRod(disk.position.x);
+
+                    disk.material.emissiveIntensity = 0.1;
+                    disk.scale.set(1, 1, 1);
+                    hideDiskSelectionIndicator();
+
+                    if (targetRod !== originalRod && isValidMove(diskSize, targetRod)) moveDisk(diskIndex, targetRod, true);
+                    else if (targetRod !== originalRod) moveDisk(diskIndex, originalRod, false);
+                    else animateDiskTo(disk, CONFIG.rodPositions[originalRod], getStackYPosition(originalRod));
+
+                    gameState.selectedDisk = null;
+                    gameState.isDragging = false;
+                }
+            }
+
+            if (isPinching && gameState.isDragging && gameState.selectedDisk) {
+                const disk = gameState.selectedDisk;
+                disk.position.x += (gameState.targetDiskPosition.x - disk.position.x) * gameState.DISK_FOLLOW_SPEED;
+                disk.position.z += (gameState.targetDiskPosition.z - disk.position.z) * gameState.DISK_FOLLOW_SPEED;
+                disk.position.y = CONFIG.liftHeight;
+            }
+        }
+
+        // ==================== UI HANDLERS ====================
+        function setupUIHandlers() {
+            DOM.diskSlider.addEventListener('input', (e) => { DOM.diskCount.textContent = e.target.value; });
+            DOM.diskSlider.addEventListener('change', (e) => { gameState.numDisks = parseInt(e.target.value); restartGame(); });
+
+            const gestureToggle = document.getElementById('gesture-toggle');
+            gestureToggle.addEventListener('click', async () => {
+                gameState.gestureMode = !gameState.gestureMode;
+                gestureToggle.classList.toggle('active');
+
+                const webcamContainer = document.getElementById('webcam-container');
+                const gestureIndicator = document.getElementById('gesture-indicator');
+                const instructionsText = document.getElementById('instructions-text');
+
+                if (gameState.gestureMode) {
+                    if (!mediaPipeReady || !camera2D) {
+                        showMessage('Camera not available. Please allow camera access.', 'error');
+                        gameState.gestureMode = false;
+                        gestureToggle.classList.remove('active');
+                        return;
+                    }
+                    webcamContainer.classList.remove('hidden');
+                    gestureIndicator.classList.remove('hidden');
+                    instructionsText.textContent = 'Pinch (thumb + index) to grab the top disk. Move your hand and release to drop!';
+                    cursor3D.visible = true;
+                    try { await camera2D.start(); } catch (err) {
+                        showMessage('Failed to start camera', 'error');
+                        gameState.gestureMode = false;
+                        gestureToggle.classList.remove('active');
+                        webcamContainer.classList.add('hidden');
+                        gestureIndicator.classList.add('hidden');
+                        return;
+                    }
+                    controls.enabled = false;
+                } else {
+                    webcamContainer.classList.add('hidden');
+                    gestureIndicator.classList.add('hidden');
+                    instructionsText.textContent = 'Click and drag disks to move them between rods. Only smaller disks can be placed on larger ones!';
+                    cursor3D.visible = false;
+                    document.getElementById('cursor-indicator').style.display = 'none';
+                    if (camera2D) camera2D.stop();
+                    controls.enabled = true;
+                    if (gameState.selectedDisk) {
+                        gameState.selectedDisk.material.emissiveIntensity = 0.1;
+                        animateDiskTo(gameState.selectedDisk, CONFIG.rodPositions[gameState.selectedDiskOriginalRod], getStackYPosition(gameState.selectedDiskOriginalRod));
+                        gameState.selectedDisk = null;
+                        gameState.isDragging = false;
+                    }
+                }
+            });
+
+            document.getElementById('restart-btn').addEventListener('click', restartGame);
+            document.getElementById('play-again-btn').addEventListener('click', restartGame);
+        }
+
+        // ==================== ANIMATION LOOP ====================
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            processAnimations();
+            renderer.render(scene, camera);
+        }
+
+        function processAnimations() {
+            const completedAnimations = [];
+            gameState.animations.forEach((anim, index) => {
+                const disk = anim.disk, speed = CONFIG.animationSpeed;
+                switch (anim.phase) {
+                    case 'lift':
+                        disk.position.y += (CONFIG.liftHeight - disk.position.y) * speed * 2;
+                        if (Math.abs(disk.position.y - CONFIG.liftHeight) < 0.05) { disk.position.y = CONFIG.liftHeight; anim.phase = 'move'; }
+                        break;
+                    case 'move':
+                        disk.position.x += (anim.targetPos.x - disk.position.x) * speed;
+                        disk.position.z += (anim.targetPos.z - disk.position.z) * speed;
+                        if (Math.abs(disk.position.x - anim.targetPos.x) < 0.05 && Math.abs(disk.position.z - anim.targetPos.z) < 0.05) {
+                            disk.position.x = anim.targetPos.x; disk.position.z = anim.targetPos.z; anim.phase = 'drop';
+                        }
+                        break;
+                    case 'drop':
+                        disk.position.y += (anim.targetPos.y - disk.position.y) * speed * 2;
+                        if (Math.abs(disk.position.y - anim.targetPos.y) < 0.05) { disk.position.y = anim.targetPos.y; completedAnimations.push(index); }
+                        break;
+                }
+            });
+            completedAnimations.reverse().forEach(index => gameState.animations.splice(index, 1));
+        }
+
+        // ==================== INITIALIZATION ====================
+        async function init() {
+            initDOMCache();
+            initThreeJS();
+            createDisks();
+            setupMouseControls();
+            setupUIHandlers();
+            await initializeMediaPipe();
+            animate();
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

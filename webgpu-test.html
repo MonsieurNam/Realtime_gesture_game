@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGPU Acceleration Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #111;
+            color: #eee;
+            text-align: center;
+        }
+
+        .container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .view-box {
+            position: relative;
+            border: 1px solid #444;
+        }
+
+        video,
+        canvas {
+            display: block;
+            max-width: 100%;
+        }
+
+        .stats {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 5px;
+            color: #0f0;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 1.2em;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            margin: 20px;
+        }
+
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        #status {
+            font-size: 1.2em;
+            margin: 10px;
+            color: yellow;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>⚡ WebGPU Acceleration Test</h1>
+    <div id="status">Initializing...</div>
+    <div class="controls">
+        <button id="toggle-gpu">Enable WebGPU</button>
+    </div>
+
+    <div class="container">
+        <!-- Input -->
+        <div class="view-box">
+            <video id="webcam" width="640" height="480" autoplay playsinline muted></video>
+            <div class="stats">Camera Source</div>
+        </div>
+
+        <!-- Output -->
+        <div class="view-box">
+            <canvas id="output-canvas" width="640" height="480"></canvas>
+            <div class="stats" id="output-stats">
+                Mode: CPU<br>
+                Time: 0 ms<br>
+                FPS: 0
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats for visual debug -->
+    <pre id="log" style="text-align: left; padding: 20px; color: #888;"></pre>
+
+    <script src="js/shared/webgpu-utils.js"></script>
+    <script src="js/shared/gpu-preprocessor.js"></script>
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('output-canvas');
+        const ctx = canvas.getContext('2d');
+        const statsEl = document.getElementById('output-stats');
+        const logEl = document.getElementById('log');
+        const toggleBtn = document.getElementById('toggle-gpu');
+        const statusEl = document.getElementById('status');
+
+        let gpuUtils, gpuProcessor;
+        let useGPU = false;
+        let isProcessing = false;
+        let lastTime = 0;
+        let frameCount = 0;
+        let fpsTimer = 0;
+
+        function log(msg) { logEl.textContent += msg + '\n'; console.log(msg); }
+
+        async function init() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                video.srcObject = stream;
+                await new Promise(r => video.onloadedmetadata = r);
+                video.play();
+                log('Camera started.');
+
+                // Init WebGPU
+                gpuUtils = new WebGPUUtils();
+                const device = await gpuUtils.init();
+
+                if (device) {
+                    gpuProcessor = new GpuPreprocessor(device);
+                    await gpuProcessor.init();
+                    statusEl.textContent = 'WebGPU Ready ✅';
+                    statusEl.style.color = '#0f0';
+                } else {
+                    statusEl.textContent = 'WebGPU Not Supported ❌ (Using CPU)';
+                    statusEl.style.color = '#f00';
+                    toggleBtn.disabled = true;
+                    toggleBtn.textContent = 'WebGPU Unavailable';
+                }
+
+                requestAnimationFrame(processLoop);
+            } catch (e) {
+                log('Error: ' + e.message);
+                statusEl.textContent = 'Error: ' + e.message;
+            }
+        }
+
+        async function processLoop() {
+            if (useGPU && gpuProcessor) {
+                const start = performance.now();
+                try {
+                    // GPU Processing
+                    const data = await gpuProcessor.process(video);
+
+                    // Visualization (Create ImageData from raw GPU output)
+                    // Note: This adds CPU overhead but needed for visualization validation
+                    const imgData = new ImageData(new Uint8ClampedArray(data.buffer), canvas.width, canvas.height);
+                    ctx.putImageData(imgData, 0, 0);
+
+                    const duration = performance.now() - start;
+                    updateStats('GPU', duration);
+                } catch (e) {
+                    log('GPU Error: ' + e.message);
+                    useGPU = false;
+                }
+            } else {
+                // CPU Processing (Baseline)
+                const start = performance.now();
+
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+
+                // Manual Grayscale Loop
+                for (let i = 0; i < data.length; i += 4) {
+                    const avg = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+                    data[i] = avg; // R
+                    data[i + 1] = avg; // G
+                    data[i + 2] = avg; // B
+                }
+                ctx.putImageData(imageData, 0, 0);
+
+                const duration = performance.now() - start;
+                updateStats('CPU', duration);
+            }
+
+            requestAnimationFrame(processLoop);
+        }
+
+        function updateStats(mode, duration) {
+            const now = performance.now();
+            frameCount++;
+            if (now - fpsTimer >= 1000) {
+                const fps = frameCount;
+                frameCount = 0;
+                fpsTimer = now;
+                statsEl.innerHTML = `Mode: ${mode}<br>Time: ${duration.toFixed(2)} ms<br>FPS: ${fps}`;
+            }
+        }
+
+        toggleBtn.addEventListener('click', () => {
+            useGPU = !useGPU;
+            toggleBtn.textContent = useGPU ? 'Disable WebGPU' : 'Enable WebGPU';
+            toggleBtn.style.background = useGPU ? '#00cc66' : '#007bff';
+        });
+
+        init();
+    </script>
+</body>
+
+</html>

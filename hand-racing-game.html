@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏎️ Hand Gesture Racing Game</title>
+    <meta name="description" content="A 3D racing game controlled by hand gestures using MediaPipe and Three.js">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0a1a;
+            overflow: hidden;
+            color: white;
+        }
+
+        /* Loading Screen */
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+
+        #loading-screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loading-title {
+            font-size: 3rem;
+            font-weight: bold;
+            background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 2rem;
+            text-shadow: 0 0 30px rgba(255, 107, 107, 0.5);
+        }
+
+        .loading-bar-container {
+            width: 300px;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        .loading-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #ff6b6b, #feca57);
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+
+        .loading-text {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* Start Menu */
+        #start-menu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 900;
+        }
+
+        .menu-title {
+            font-size: 4rem;
+            font-weight: bold;
+            background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1rem;
+        }
+
+        .menu-subtitle {
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 2rem;
+        }
+
+        .high-score-display {
+            font-size: 1.5rem;
+            color: #feca57;
+            margin-bottom: 2rem;
+        }
+
+        .instructions {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1.5rem 2rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            max-width: 500px;
+            text-align: left;
+        }
+
+        .instructions h3 {
+            color: #48dbfb;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .instructions p {
+            margin: 0.5rem 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .instructions .icon {
+            font-size: 1.5rem;
+        }
+
+        .difficulty-selector {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .difficulty-btn {
+            padding: 0.8rem 1.5rem;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: transparent;
+            color: white;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+        }
+
+        .difficulty-btn:hover {
+            border-color: #48dbfb;
+            background: rgba(72, 219, 251, 0.2);
+        }
+
+        .difficulty-btn.selected {
+            border-color: #feca57;
+            background: rgba(254, 202, 87, 0.3);
+            color: #feca57;
+        }
+
+        .start-btn {
+            padding: 1rem 3rem;
+            font-size: 1.5rem;
+            background: linear-gradient(90deg, #ff6b6b, #feca57);
+            border: none;
+            border-radius: 50px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+            box-shadow: 0 10px 30px rgba(255, 107, 107, 0.4);
+        }
+
+        .start-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 15px 40px rgba(255, 107, 107, 0.6);
+        }
+
+        /* Game Container */
+        #game-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* HUD */
+        #hud {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .score-display {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 15px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .score-label {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+            text-transform: uppercase;
+        }
+
+        .score-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #feca57;
+        }
+
+        .speed-display {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 15px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .speed-label {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+            text-transform: uppercase;
+        }
+
+        .speed-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #48dbfb;
+        }
+
+        /* Webcam Feed */
+        #webcam-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 200px;
+            height: 150px;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            z-index: 100;
+        }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .gesture-indicator {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: #48dbfb;
+            z-index: 10;
+        }
+
+        /* Visual Guide Overlay */
+        .webcam-guide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .guide-zone {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+
+        .guide-left {
+            left: 0;
+            width: 33%;
+            background: linear-gradient(90deg, rgba(255, 107, 107, 0.3), transparent);
+            border-right: 2px dashed rgba(255, 255, 255, 0.3);
+        }
+
+        .guide-center {
+            left: 33%;
+            width: 34%;
+            background: rgba(72, 219, 251, 0.1);
+        }
+
+        .guide-right {
+            right: 0;
+            width: 33%;
+            background: linear-gradient(-90deg, rgba(254, 202, 87, 0.3), transparent);
+            border-left: 2px dashed rgba(255, 255, 255, 0.3);
+        }
+
+        .guide-label {
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+        }
+
+        .guide-center-line {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30px;
+            height: 30px;
+            border: 2px solid rgba(72, 219, 251, 0.6);
+            border-radius: 50%;
+        }
+
+        .guide-center-dot {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 8px;
+            height: 8px;
+            background: #48dbfb;
+            border-radius: 50%;
+        }
+
+        /* Game Over Screen */
+        #game-over {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 800;
+        }
+
+        .game-over-title {
+            font-size: 4rem;
+            color: #ff6b6b;
+            margin-bottom: 1rem;
+        }
+
+        .final-score {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .new-high-score {
+            font-size: 1.5rem;
+            color: #feca57;
+            margin-bottom: 2rem;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.1);
+            }
+        }
+
+        .retry-btn {
+            padding: 1rem 3rem;
+            font-size: 1.5rem;
+            background: linear-gradient(90deg, #48dbfb, #0abde3);
+            border: none;
+            border-radius: 50px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+            margin-top: 1rem;
+        }
+
+        .retry-btn:hover {
+            transform: scale(1.05);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .menu-title {
+                font-size: 2.5rem;
+            }
+
+            .loading-title {
+                font-size: 2rem;
+            }
+
+            #webcam-container {
+                width: 120px;
+                height: 90px;
+                bottom: 10px;
+                right: 10px;
+            }
+
+            .score-value {
+                font-size: 1.8rem;
+            }
+
+            .instructions {
+                margin: 1rem;
+                padding: 1rem;
+                font-size: 0.9rem;
+            }
+
+            .difficulty-selector {
+                flex-direction: column;
+            }
+        }
+
+        /* Audio button */
+        #audio-toggle {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        #audio-toggle:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="loading-title">🏎️ Hand Racing</div>
+        <div class="loading-bar-container">
+            <div class="loading-bar" id="loading-bar"></div>
+        </div>
+        <div class="loading-text" id="loading-text">Initializing...</div>
+    </div>
+
+    <!-- Start Menu -->
+    <div id="start-menu">
+        <div class="menu-title">🏎️ Hand Racing</div>
+        <div class="menu-subtitle">Control with your hands!</div>
+        <div class="high-score-display" id="high-score-display">🏆 High Score: 0</div>
+
+        <div class="instructions">
+            <h3>How to Play</h3>
+            <p><span class="icon">✋</span> Open palms = Accelerate</p>
+            <p><span class="icon">✊</span> Closed fists = Brake</p>
+            <p><span class="icon">👈</span> Tilt hands left = Steer left</p>
+            <p><span class="icon">👉</span> Tilt hands right = Steer right</p>
+            <p><span class="icon">🚫</span> Avoid red obstacles!</p>
+        </div>
+
+        <div class="difficulty-selector">
+            <button class="difficulty-btn selected" data-difficulty="easy">😊 Easy</button>
+            <button class="difficulty-btn" data-difficulty="medium">😐 Medium</button>
+            <button class="difficulty-btn" data-difficulty="hard">😈 Hard</button>
+        </div>
+
+        <button class="start-btn" id="start-btn">🚀 Start Race!</button>
+    </div>
+
+    <!-- Game Container -->
+    <div id="game-container"></div>
+
+    <!-- HUD -->
+    <div id="hud" style="display: none;">
+        <div class="score-display">
+            <div class="score-label">Score</div>
+            <div class="score-value" id="score-value">0</div>
+        </div>
+        <div class="speed-display">
+            <div class="speed-label">Speed</div>
+            <div class="speed-value" id="speed-value">0 km/h</div>
+        </div>
+    </div>
+
+    <!-- Webcam Feed -->
+    <div id="webcam-container" style="display: none;">
+        <video id="webcam" autoplay playsinline></video>
+        <!-- Visual Guide Overlay -->
+        <div class="webcam-guide">
+            <div class="guide-zone guide-left">
+                <span class="guide-label">👈 LEFT</span>
+            </div>
+            <div class="guide-zone guide-center">
+                <div class="guide-center-line"></div>
+                <div class="guide-center-dot"></div>
+            </div>
+            <div class="guide-zone guide-right">
+                <span class="guide-label">RIGHT 👉</span>
+            </div>
+        </div>
+        <div class="gesture-indicator" id="gesture-indicator">Detecting...</div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over">
+        <div class="game-over-title">💥 Game Over!</div>
+        <div class="final-score">Score: <span id="final-score">0</span></div>
+        <div class="new-high-score" id="new-high-score" style="display: none;">🎉 New High Score!</div>
+        <button class="retry-btn" id="retry-btn">🔄 Play Again</button>
+        <button class="retry-btn" id="menu-btn" style="background: linear-gradient(90deg, #ff6b6b, #ee5a5a);">🏠 Main
+            Menu</button>
+    </div>
+
+    <!-- Audio Toggle -->
+    <button id="audio-toggle" style="display: none;">🔊</button>
+
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+    <script>
+        // ==================== GAME CONFIGURATION ====================
+        const CONFIG = {
+            difficulty: {
+                easy: { baseSpeed: 0.3, maxSpeed: 0.8, obstacleFrequency: 0.005, scoreMultiplier: 1, maxObstacles: 3 },
+                medium: { baseSpeed: 0.5, maxSpeed: 1.2, obstacleFrequency: 0.008, scoreMultiplier: 1.5, maxObstacles: 4 },
+                hard: { baseSpeed: 0.7, maxSpeed: 1.5, obstacleFrequency: 0.012, scoreMultiplier: 2, maxObstacles: 5 }
+            },
+            track: {
+                width: 12,
+                length: 200,
+                laneCount: 3
+            },
+            car: {
+                width: 1.5,
+                height: 0.8,
+                length: 2.5
+            }
+        };
+
+        // ==================== GAME STATE ====================
+        let gameState = {
+            isPlaying: false,
+            score: 0,
+            speed: 0,
+            targetSpeed: 0,
+            carPosition: 0,
+            targetCarPosition: 0,
+            difficulty: 'easy',
+            highScore: parseInt(localStorage.getItem('handRacingHighScore') || '0'),
+            audioEnabled: true
+        };
+
+        // ==================== THREE.JS SETUP ====================
+        let scene, camera, renderer, car, track;
+        let obstacles = [];
+        let stars = [];
+        let roadLines = [];
+        let clock = new THREE.Clock();
+
+        // ==================== MEDIAPIPE SETUP ====================
+        let hands, mpCamera;
+        let gestureData = {
+            steering: 0,
+            isAccelerating: false,
+            isBraking: false,
+            handsDetected: false
+        };
+
+        // ==================== AUDIO CONTEXT ====================
+        let audioContext;
+        let engineOscillator, engineGain;
+        let bgmOscillator, bgmGain;
+
+        // ==================== DOM ELEMENTS ====================
+        const loadingScreen = document.getElementById('loading-screen');
+        const loadingBar = document.getElementById('loading-bar');
+        const loadingText = document.getElementById('loading-text');
+        const startMenu = document.getElementById('start-menu');
+        const gameContainer = document.getElementById('game-container');
+        const hud = document.getElementById('hud');
+        const webcamContainer = document.getElementById('webcam-container');
+        const webcamElement = document.getElementById('webcam');
+        const gestureIndicator = document.getElementById('gesture-indicator');
+        const gameOverScreen = document.getElementById('game-over');
+        const audioToggle = document.getElementById('audio-toggle');
+
+        // ==================== INITIALIZATION ====================
+        async function init() {
+            try {
+                updateLoading(10, 'Loading Three.js...');
+                await initThreeJS();
+
+                updateLoading(40, 'Loading MediaPipe...');
+                await initMediaPipe();
+
+                updateLoading(70, 'Setting up audio...');
+                initAudio();
+
+                updateLoading(90, 'Preparing game...');
+                setupEventListeners();
+
+                updateLoading(100, 'Ready!');
+
+                setTimeout(() => {
+                    loadingScreen.classList.add('hidden');
+                    startMenu.style.display = 'flex';
+                    document.getElementById('high-score-display').textContent = `🏆 High Score: ${gameState.highScore}`;
+                }, 500);
+
+            } catch (error) {
+                console.error('Initialization error:', error);
+                loadingText.textContent = 'Error loading game. Please refresh.';
+            }
+        }
+
+        function updateLoading(percent, text) {
+            loadingBar.style.width = percent + '%';
+            loadingText.textContent = text;
+        }
+
+        // ==================== THREE.JS INITIALIZATION ====================
+        async function initThreeJS() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a1a);
+            scene.fog = new THREE.Fog(0x0a0a1a, 30, 100);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+            camera.position.set(0, 3, 8);
+            camera.lookAt(0, 0, -20);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Reduced for performance
+            renderer.shadowMap.enabled = false; // Disabled for low-cost computers
+            gameContainer.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404080, 0.5);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(10, 20, 10);
+            scene.add(directionalLight);
+
+            // Add point lights for neon effect
+            const neonLight1 = new THREE.PointLight(0xff6b6b, 1, 50);
+            neonLight1.position.set(-10, 5, -20);
+            scene.add(neonLight1);
+
+            const neonLight2 = new THREE.PointLight(0x48dbfb, 1, 50);
+            neonLight2.position.set(10, 5, -20);
+            scene.add(neonLight2);
+
+            // Create Track
+            createTrack();
+
+            // Create Car
+            createCar();
+
+            // Create Stars
+            createStars();
+
+            // Handle resize
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function createTrack() {
+            // Road surface
+            const roadGeometry = new THREE.PlaneGeometry(CONFIG.track.width, CONFIG.track.length);
+            const roadMaterial = new THREE.MeshStandardMaterial({
+                color: 0x2d2d2d,
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            const road = new THREE.Mesh(roadGeometry, roadMaterial);
+            road.rotation.x = -Math.PI / 2;
+            road.position.z = -CONFIG.track.length / 2;
+            road.receiveShadow = true;
+            scene.add(road);
+
+            // Lane markings
+            const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const lineGeometry = new THREE.PlaneGeometry(0.2, 4);
+
+            for (let z = 0; z > -CONFIG.track.length; z -= 8) {
+                // Left lane line
+                const leftLine = new THREE.Mesh(lineGeometry, lineMaterial);
+                leftLine.rotation.x = -Math.PI / 2;
+                leftLine.position.set(-2, 0.01, z);
+                scene.add(leftLine);
+                roadLines.push(leftLine);
+
+                // Right lane line
+                const rightLine = new THREE.Mesh(lineGeometry, lineMaterial);
+                rightLine.rotation.x = -Math.PI / 2;
+                rightLine.position.set(2, 0.01, z);
+                scene.add(rightLine);
+                roadLines.push(rightLine);
+            }
+
+            // Road edges (neon strips)
+            const edgeMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff6b6b,
+                emissive: 0xff6b6b,
+                emissiveIntensity: 0.5
+            });
+            const edgeGeometry = new THREE.BoxGeometry(0.3, 0.3, CONFIG.track.length);
+
+            const leftEdge = new THREE.Mesh(edgeGeometry, edgeMaterial);
+            leftEdge.position.set(-CONFIG.track.width / 2, 0.15, -CONFIG.track.length / 2);
+            scene.add(leftEdge);
+
+            const rightEdge = leftEdge.clone();
+            rightEdge.position.x = CONFIG.track.width / 2;
+            scene.add(rightEdge);
+        }
+
+        function createCar() {
+            car = new THREE.Group();
+
+            // Car body
+            const bodyGeometry = new THREE.BoxGeometry(CONFIG.car.width, CONFIG.car.height, CONFIG.car.length);
+            const bodyMaterial = new THREE.MeshStandardMaterial({
+                color: 0xfeca57,
+                metalness: 0.6,
+                roughness: 0.3
+            });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = CONFIG.car.height / 2 + 0.2;
+            car.add(body);
+
+            // Car roof
+            const roofGeometry = new THREE.BoxGeometry(CONFIG.car.width * 0.8, CONFIG.car.height * 0.5, CONFIG.car.length * 0.5);
+            const roof = new THREE.Mesh(roofGeometry, bodyMaterial);
+            roof.position.y = CONFIG.car.height + 0.4;
+            roof.position.z = -0.2;
+            car.add(roof);
+
+            // Wheels
+            const wheelGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 16);
+            const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+
+            const wheelPositions = [
+                [-0.7, 0.3, 0.8],
+                [0.7, 0.3, 0.8],
+                [-0.7, 0.3, -0.8],
+                [0.7, 0.3, -0.8]
+            ];
+
+            wheelPositions.forEach(pos => {
+                const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(...pos);
+                car.add(wheel);
+            });
+
+            // Headlights
+            const headlightGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+            const headlightMaterial = new THREE.MeshBasicMaterial({ color: 0xffffaa });
+
+            const leftHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+            leftHeadlight.position.set(-0.5, 0.6, -CONFIG.car.length / 2);
+            car.add(leftHeadlight);
+
+            const rightHeadlight = leftHeadlight.clone();
+            rightHeadlight.position.x = 0.5;
+            car.add(rightHeadlight);
+
+            // Brake lights
+            const brakeGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+            const brakeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+
+            const leftBrake = new THREE.Mesh(brakeGeometry, brakeMaterial);
+            leftBrake.position.set(-0.5, 0.6, CONFIG.car.length / 2);
+            car.add(leftBrake);
+
+            const rightBrake = leftBrake.clone();
+            rightBrake.position.x = 0.5;
+            car.add(rightBrake);
+
+            car.position.y = 0;
+            scene.add(car);
+        }
+
+        function createStars() {
+            const starGeometry = new THREE.BufferGeometry();
+            const starCount = 300; // Reduced for performance
+            const positions = new Float32Array(starCount * 3);
+
+            for (let i = 0; i < starCount; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 200;
+                positions[i * 3 + 1] = Math.random() * 50 + 10;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 200 - 50;
+            }
+
+            starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const starMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 0.5,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            const starField = new THREE.Points(starGeometry, starMaterial);
+            scene.add(starField);
+            stars.push(starField);
+        }
+
+        function createObstacle() {
+            // Check minimum distance from other obstacles
+            const minDistance = 25; // Minimum distance between obstacles
+            const spawnZ = -80; // Spawn further ahead (was -CONFIG.track.length + 10)
+
+            // Check if any obstacle is too close to spawn position
+            for (const obs of obstacles) {
+                if (Math.abs(obs.position.z - spawnZ) < minDistance) {
+                    return; // Don't spawn if too close to existing obstacle
+                }
+            }
+
+            const lanePositions = [-3, 0, 3]; // Adjusted lane positions to be more centered
+            const lane = lanePositions[Math.floor(Math.random() * lanePositions.length)];
+
+            const obstacleGeometry = new THREE.BoxGeometry(1.2, 1.2, 1.2); // Slightly smaller
+            const obstacleMaterial = new THREE.MeshStandardMaterial({
+                color: 0xff4444,
+                emissive: 0xff0000,
+                emissiveIntensity: 0.3,
+                metalness: 0.5,
+                roughness: 0.5
+            });
+
+            const obstacle = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
+            obstacle.position.set(lane, 0.6, spawnZ);
+            obstacle.userData = { lane: lane };
+
+            scene.add(obstacle);
+            obstacles.push(obstacle);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ==================== MEDIAPIPE INITIALIZATION ====================
+        async function initMediaPipe() {
+            return new Promise((resolve, reject) => {
+                try {
+                    hands = new Hands({
+                        locateFile: (file) => {
+                            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                        }
+                    });
+
+                    hands.setOptions({
+                        maxNumHands: 2,
+                        modelComplexity: 1,
+                        minDetectionConfidence: 0.7,
+                        minTrackingConfidence: 0.5
+                    });
+
+                    hands.onResults(onHandResults);
+
+                    resolve();
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480, facingMode: 'user' }
+                });
+                webcamElement.srcObject = stream;
+
+                await new Promise(resolve => {
+                    webcamElement.onloadedmetadata = resolve;
+                });
+
+                // Start processing frames
+                processFrame();
+
+            } catch (error) {
+                console.error('Camera error:', error);
+                gestureIndicator.textContent = 'Camera Error';
+            }
+        }
+
+        let lastProcessTime = 0;
+        const PROCESS_INTERVAL = 100; // Process every 100ms for low-cost computers
+
+        async function processFrame() {
+            if (!gameState.isPlaying) return;
+
+            const now = performance.now();
+            if (now - lastProcessTime >= PROCESS_INTERVAL) {
+                lastProcessTime = now;
+                try {
+                    await hands.send({ image: webcamElement });
+                } catch (error) {
+                    console.error('Hand detection error:', error);
+                }
+            }
+
+            requestAnimationFrame(processFrame);
+        }
+
+        function onHandResults(results) {
+            try {
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    gestureData.handsDetected = true;
+
+                    let totalSteering = 0;
+                    let isOpen = false;
+                    let isClosed = false;
+
+                    results.multiHandLandmarks.forEach((landmarks, index) => {
+                        // Calculate hand tilt for steering (using wrist and middle finger base)
+                        const wrist = landmarks[0];
+                        const middleBase = landmarks[9];
+
+                        // Steering based on horizontal position and tilt
+                        const handCenter = (wrist.x + middleBase.x) / 2;
+                        const tilt = middleBase.x - wrist.x;
+                        // FIXED: Negate steering to correct left/right direction (webcam is mirrored)
+                        totalSteering -= (handCenter - 0.5) * 2 + tilt * 3;
+
+                        // Check if hand is open or closed
+                        const fingerTips = [8, 12, 16, 20]; // Index, middle, ring, pinky tips
+                        const fingerBases = [5, 9, 13, 17]; // Corresponding bases
+
+                        let openFingers = 0;
+                        fingerTips.forEach((tipIdx, i) => {
+                            if (landmarks[tipIdx].y < landmarks[fingerBases[i]].y) {
+                                openFingers++;
+                            }
+                        });
+
+                        if (openFingers >= 3) {
+                            isOpen = true;
+                        } else if (openFingers <= 1) {
+                            isClosed = true;
+                        }
+                    });
+
+                    // Steering is now correctly oriented (tilt left = steer left)
+                    gestureData.steering = Math.max(-1, Math.min(1, totalSteering / results.multiHandLandmarks.length));
+                    gestureData.isAccelerating = isOpen && !isClosed;
+                    gestureData.isBraking = isClosed;
+
+                    // Update gesture indicator
+                    if (gestureData.isBraking) {
+                        gestureIndicator.textContent = '✊ Braking';
+                    } else if (gestureData.isAccelerating) {
+                        gestureIndicator.textContent = '✋ Accelerating';
+                    } else {
+                        gestureIndicator.textContent = '🖐️ Coasting';
+                    }
+
+                } else {
+                    gestureData.handsDetected = false;
+                    gestureIndicator.textContent = '❓ No hands';
+                }
+            } catch (error) {
+                console.error('Gesture processing error:', error);
+            }
+        }
+
+        // ==================== AUDIO ====================
+        function initAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (error) {
+                console.error('Audio context error:', error);
+            }
+        }
+
+        function startEngineSound() {
+            if (!audioContext || !gameState.audioEnabled) return;
+
+            try {
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+
+                // Engine sound
+                engineOscillator = audioContext.createOscillator();
+                engineGain = audioContext.createGain();
+
+                engineOscillator.type = 'sawtooth';
+                engineOscillator.frequency.setValueAtTime(80, audioContext.currentTime);
+                engineGain.gain.setValueAtTime(0.05, audioContext.currentTime);
+
+                engineOscillator.connect(engineGain);
+                engineGain.connect(audioContext.destination);
+                engineOscillator.start();
+
+                // Background music (simple synth)
+                bgmOscillator = audioContext.createOscillator();
+                bgmGain = audioContext.createGain();
+
+                bgmOscillator.type = 'sine';
+                bgmOscillator.frequency.setValueAtTime(220, audioContext.currentTime);
+                bgmGain.gain.setValueAtTime(0.02, audioContext.currentTime);
+
+                bgmOscillator.connect(bgmGain);
+                bgmGain.connect(audioContext.destination);
+                bgmOscillator.start();
+
+            } catch (error) {
+                console.error('Engine sound error:', error);
+            }
+        }
+
+        function updateEngineSound() {
+            if (!engineOscillator || !gameState.audioEnabled) return;
+
+            try {
+                const frequency = 80 + gameState.speed * 150;
+                engineOscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            } catch (error) { }
+        }
+
+        function stopEngineSound() {
+            try {
+                if (engineOscillator) {
+                    engineOscillator.stop();
+                    engineOscillator = null;
+                }
+                if (bgmOscillator) {
+                    bgmOscillator.stop();
+                    bgmOscillator = null;
+                }
+            } catch (error) { }
+        }
+
+        function playCollisionSound() {
+            if (!audioContext || !gameState.audioEnabled) return;
+
+            try {
+                const osc = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(100, audioContext.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + 0.2);
+
+                gain.gain.setValueAtTime(0.2, audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+                osc.connect(gain);
+                gain.connect(audioContext.destination);
+
+                osc.start();
+                osc.stop(audioContext.currentTime + 0.3);
+            } catch (error) { }
+        }
+
+        // ==================== GAME LOGIC ====================
+        function startGame() {
+            gameState.isPlaying = true;
+            gameState.score = 0;
+            gameState.speed = 0;
+            gameState.carPosition = 0;
+
+            startMenu.style.display = 'none';
+            hud.style.display = 'flex';
+            webcamContainer.style.display = 'block';
+            audioToggle.style.display = 'block';
+            gameOverScreen.style.display = 'none';
+
+            // Clear existing obstacles
+            obstacles.forEach(obs => scene.remove(obs));
+            obstacles = [];
+
+            // Reset car position
+            car.position.x = 0;
+
+            // Start camera
+            startCamera();
+
+            // Start audio
+            startEngineSound();
+
+            // Start game loop
+            animate();
+        }
+
+        function endGame() {
+            gameState.isPlaying = false;
+
+            stopEngineSound();
+
+            // Check for high score
+            const isNewHighScore = gameState.score > gameState.highScore;
+            if (isNewHighScore) {
+                gameState.highScore = gameState.score;
+                localStorage.setItem('handRacingHighScore', gameState.score.toString());
+            }
+
+            // Show game over screen
+            document.getElementById('final-score').textContent = Math.floor(gameState.score);
+            document.getElementById('new-high-score').style.display = isNewHighScore ? 'block' : 'none';
+            gameOverScreen.style.display = 'flex';
+
+            // Stop camera
+            if (webcamElement.srcObject) {
+                webcamElement.srcObject.getTracks().forEach(track => track.stop());
+            }
+        }
+
+        function animate() {
+            if (!gameState.isPlaying) return;
+
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const diffSettings = CONFIG.difficulty[gameState.difficulty];
+
+            // Update speed based on gestures
+            if (gestureData.isAccelerating) {
+                gameState.targetSpeed = diffSettings.maxSpeed;
+            } else if (gestureData.isBraking) {
+                gameState.targetSpeed = diffSettings.baseSpeed * 0.3;
+            } else {
+                gameState.targetSpeed = diffSettings.baseSpeed;
+            }
+
+            // Smooth speed transition
+            gameState.speed += (gameState.targetSpeed - gameState.speed) * 0.05;
+
+            // Update car position based on steering
+            gameState.targetCarPosition = gestureData.steering * (CONFIG.track.width / 2 - 1);
+            gameState.carPosition += (gameState.targetCarPosition - gameState.carPosition) * 0.1;
+            car.position.x = gameState.carPosition;
+
+            // Car tilt animation
+            car.rotation.z = -gestureData.steering * 0.1;
+            car.rotation.y = gestureData.steering * 0.05;
+
+            // Move road lines
+            roadLines.forEach(line => {
+                line.position.z += gameState.speed;
+                if (line.position.z > 10) {
+                    line.position.z -= CONFIG.track.length;
+                }
+            });
+
+            // Create new obstacles (with limits)
+            const maxObs = diffSettings.maxObstacles || 4;
+            if (obstacles.length < maxObs && Math.random() < diffSettings.obstacleFrequency) {
+                createObstacle();
+            }
+
+            // Update obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obstacle = obstacles[i];
+                obstacle.position.z += gameState.speed;
+                obstacle.rotation.y += 0.02;
+
+                // Check collision
+                const carBounds = {
+                    left: car.position.x - CONFIG.car.width / 2,
+                    right: car.position.x + CONFIG.car.width / 2,
+                    front: -CONFIG.car.length / 2,
+                    back: CONFIG.car.length / 2
+                };
+
+                const obsBounds = {
+                    left: obstacle.position.x - 0.75,
+                    right: obstacle.position.x + 0.75,
+                    front: obstacle.position.z - 0.75,
+                    back: obstacle.position.z + 0.75
+                };
+
+                if (carBounds.right > obsBounds.left &&
+                    carBounds.left < obsBounds.right &&
+                    carBounds.back > obsBounds.front &&
+                    carBounds.front < obsBounds.back) {
+
+                    playCollisionSound();
+
+                    // Game over immediately on collision
+                    scene.remove(obstacle);
+                    obstacles.splice(i, 1);
+                    endGame();
+                    return;
+                }
+
+                // Remove obstacles that passed
+                if (obstacle.position.z > 15) {
+                    scene.remove(obstacle);
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // Update score
+            gameState.score += gameState.speed * diffSettings.scoreMultiplier * 0.5;
+
+            // Update HUD
+            document.getElementById('score-value').textContent = Math.floor(gameState.score);
+            document.getElementById('speed-value').textContent = Math.floor(gameState.speed * 100) + ' km/h';
+
+            // Update engine sound
+            updateEngineSound();
+
+            // Camera shake at high speed
+            camera.position.x = Math.sin(Date.now() * 0.01) * gameState.speed * 0.1;
+
+            renderer.render(scene, camera);
+        }
+
+        // ==================== EVENT LISTENERS ====================
+        function setupEventListeners() {
+            // Difficulty buttons
+            document.querySelectorAll('.difficulty-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.difficulty-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    gameState.difficulty = btn.dataset.difficulty;
+                });
+            });
+
+            // Start button
+            document.getElementById('start-btn').addEventListener('click', startGame);
+
+            // Retry button
+            document.getElementById('retry-btn').addEventListener('click', startGame);
+
+            // Menu button
+            document.getElementById('menu-btn').addEventListener('click', () => {
+                gameOverScreen.style.display = 'none';
+                startMenu.style.display = 'flex';
+                hud.style.display = 'none';
+                webcamContainer.style.display = 'none';
+                audioToggle.style.display = 'none';
+                document.getElementById('high-score-display').textContent = `🏆 High Score: ${gameState.highScore}`;
+            });
+
+            // Audio toggle
+            audioToggle.addEventListener('click', () => {
+                gameState.audioEnabled = !gameState.audioEnabled;
+                audioToggle.textContent = gameState.audioEnabled ? '🔊' : '🔇';
+
+                if (!gameState.audioEnabled) {
+                    stopEngineSound();
+                } else if (gameState.isPlaying) {
+                    startEngineSound();
+                }
+            });
+
+            // Keyboard fallback controls
+            document.addEventListener('keydown', (e) => {
+                if (!gameState.isPlaying) return;
+
+                switch (e.key) {
+                    case 'ArrowLeft':
+                    case 'a':
+                        gestureData.steering = -1;
+                        break;
+                    case 'ArrowRight':
+                    case 'd':
+                        gestureData.steering = 1;
+                        break;
+                    case 'ArrowUp':
+                    case 'w':
+                        gestureData.isAccelerating = true;
+                        gestureData.isBraking = false;
+                        break;
+                    case 'ArrowDown':
+                    case 's':
+                        gestureData.isBraking = true;
+                        gestureData.isAccelerating = false;
+                        break;
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                if (!gameState.isPlaying) return;
+
+                switch (e.key) {
+                    case 'ArrowLeft':
+                    case 'a':
+                    case 'ArrowRight':
+                    case 'd':
+                        gestureData.steering = 0;
+                        break;
+                    case 'ArrowUp':
+                    case 'w':
+                        gestureData.isAccelerating = false;
+                        break;
+                    case 'ArrowDown':
+                    case 's':
+                        gestureData.isBraking = false;
+                        break;
+                }
+            });
+        }
+
+        // ==================== START ====================
+        init();
+    </script>
+</body>
+
+</html>

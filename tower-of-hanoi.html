@@ -1,0 +1,1977 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tower of Hanoi 3D - Gesture Control</title>
+    <meta name="description"
+        content="A 3D Tower of Hanoi puzzle game with hand gesture control using MediaPipe and Three.js">
+    <style>
+        /* ============================================
+           CSS STYLES
+           ============================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            overflow: hidden;
+            color: #fff;
+        }
+
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        #three-canvas {
+            display: block;
+        }
+
+        /* Loading Overlay */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 30, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+
+        #loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #00d9ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #loading-text {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #00d9ff;
+        }
+
+        /* UI Overlay */
+        #ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .ui-panel {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            pointer-events: auto;
+        }
+
+        .stats-panel {
+            display: flex;
+            gap: 30px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .controls-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            min-width: 220px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Slider Styling */
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 217, 255, 0.5);
+        }
+
+        .slider-value {
+            text-align: center;
+            font-size: 14px;
+            color: #00d9ff;
+        }
+
+        /* Toggle Switch */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 13px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .toggle-switch.active {
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+
+        .toggle-switch.active::after {
+            transform: translateX(24px);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            color: #1a1a2e;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 217, 255, 0.4);
+        }
+
+        /* Webcam Preview */
+        #webcam-container {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            width: 200px;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid rgba(0, 217, 255, 0.5);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+        }
+
+        #webcam-container.hidden {
+            display: none;
+        }
+
+        #webcam {
+            width: 100%;
+            display: block;
+            transform: scaleX(-1);
+        }
+
+        #webcam-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+        }
+
+        /* Gesture Indicator */
+        #gesture-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        #gesture-indicator.hidden {
+            display: none;
+        }
+
+        .gesture-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .gesture-icon.grabbing {
+            background: linear-gradient(135deg, #ff6b6b, #ffa502);
+            animation: pulse 0.5s infinite;
+        }
+
+        .gesture-icon.open {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.1);
+            }
+        }
+
+        /* Win Overlay */
+        #win-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 500;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+
+        #win-overlay.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .win-title {
+            font-size: 72px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #ffd700, #ff6b6b, #00d9ff, #00ff88);
+            background-size: 300% 300%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientShift 2s ease infinite;
+            text-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
+            margin-bottom: 20px;
+        }
+
+        @keyframes gradientShift {
+
+            0%,
+            100% {
+                background-position: 0% 50%;
+            }
+
+            50% {
+                background-position: 100% 50%;
+            }
+        }
+
+        .win-stats {
+            font-size: 24px;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 30px;
+        }
+
+        /* Instructions Panel */
+        #instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px 25px;
+            text-align: center;
+            z-index: 100;
+            max-width: 500px;
+        }
+
+        #instructions.gesture-mode {
+            left: 50%;
+        }
+
+        #instructions h3 {
+            font-size: 14px;
+            color: #00d9ff;
+            margin-bottom: 8px;
+        }
+
+        #instructions p {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.5;
+        }
+
+        /* 3D Cursor indicator */
+        #cursor-indicator {
+            position: fixed;
+            width: 30px;
+            height: 30px;
+            border: 2px solid #00d9ff;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 200;
+            transform: translate(-50%, -50%);
+            transition: all 0.1s ease;
+            display: none;
+        }
+
+        #cursor-indicator.grabbing {
+            border-color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.3);
+            transform: translate(-50%, -50%) scale(0.8);
+        }
+
+        /* Message Toast */
+        #message-toast {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 107, 107, 0.9);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 20px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 300;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        #message-toast.show {
+            opacity: 1;
+        }
+
+        #message-toast.success {
+            background: rgba(0, 255, 136, 0.9);
+            color: #1a1a2e;
+        }
+
+        /* Disk Selection Indicator */
+        #disk-selection-indicator {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.9), rgba(0, 255, 136, 0.9));
+            backdrop-filter: blur(10px);
+            border-radius: 50px;
+            padding: 12px 30px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 150;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 30px rgba(0, 217, 255, 0.5);
+        }
+
+        #disk-selection-indicator.show {
+            opacity: 1;
+        }
+
+        #disk-selection-indicator .disk-preview {
+            width: 40px;
+            height: 15px;
+            border-radius: 8px;
+            animation: diskPreviewPulse 1s ease-in-out infinite;
+        }
+
+        #disk-selection-indicator .selection-text {
+            font-size: 14px;
+            font-weight: bold;
+            color: #1a1a2e;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        @keyframes diskPreviewPulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 10px currentColor;
+            }
+
+            50% {
+                transform: scale(1.1);
+                box-shadow: 0 0 20px currentColor;
+            }
+        }
+
+        @keyframes selectedDiskFloat {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-5px);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div id="loading-text">Loading MediaPipe...</div>
+    </div>
+
+    <!-- Game Container -->
+    <div id="game-container">
+        <canvas id="three-canvas"></canvas>
+    </div>
+
+    <!-- UI Overlay -->
+    <div id="ui-overlay">
+        <!-- Stats Panel -->
+        <div class="ui-panel stats-panel">
+            <div class="stat-item">
+                <div class="stat-label">Moves</div>
+                <div class="stat-value" id="move-count">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Time</div>
+                <div class="stat-value" id="timer">00:00</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Minimum</div>
+                <div class="stat-value" id="min-moves">7</div>
+            </div>
+        </div>
+
+        <!-- Controls Panel -->
+        <div class="ui-panel controls-panel">
+            <div class="control-group">
+                <div class="control-label">Disks</div>
+                <input type="range" id="disk-slider" min="3" max="7" value="3">
+                <div class="slider-value"><span id="disk-count">3</span> Disks</div>
+            </div>
+            <div class="control-group">
+                <div class="toggle-container">
+                    <span class="control-label">Gesture Mode</span>
+                    <div class="toggle-switch" id="gesture-toggle"></div>
+                </div>
+            </div>
+            <button class="btn btn-primary" id="restart-btn">Restart</button>
+        </div>
+    </div>
+
+    <!-- Webcam Preview -->
+    <div id="webcam-container" class="hidden">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="webcam-canvas"></canvas>
+    </div>
+
+    <!-- Gesture Indicator -->
+    <div id="gesture-indicator" class="hidden">
+        <div class="gesture-icon open" id="gesture-icon">✋</div>
+        <span id="gesture-text">Open Hand</span>
+    </div>
+
+    <!-- Instructions -->
+    <div id="instructions">
+        <h3>How to Play</h3>
+        <p id="instructions-text">Click and drag disks to move them between rods. Only smaller disks can be placed on
+            larger ones!</p>
+    </div>
+
+    <!-- Win Overlay -->
+    <div id="win-overlay">
+        <div class="win-title">🎉 YOU WIN! 🎉</div>
+        <div class="win-stats" id="win-stats">Moves: 0 | Time: 00:00</div>
+        <button class="btn btn-primary" id="play-again-btn">Play Again</button>
+    </div>
+
+    <!-- Message Toast -->
+    <div id="message-toast">Invalid Move!</div>
+
+    <!-- Cursor Indicator for Gesture Mode -->
+    <div id="cursor-indicator"></div>
+
+    <!-- Disk Selection Indicator -->
+    <div id="disk-selection-indicator">
+        <div class="disk-preview" id="disk-preview"></div>
+        <span class="selection-text">Disk Selected - Drag to Move!</span>
+    </div>
+
+    <!-- MediaPipe Scripts (must load before module) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+    <!-- Scripts -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        /* ============================================
+           GAME CONFIGURATION
+           ============================================ */
+        const CONFIG = {
+            // Disk settings
+            diskColors: [
+                '#ff6b6b', // Red
+                '#ffa502', // Orange
+                '#ffd93d', // Yellow
+                '#6bcb77', // Green
+                '#4d96ff', // Blue
+                '#9b59b6', // Purple
+                '#e84393'  // Pink
+            ],
+            diskMinRadius: 0.3,
+            diskMaxRadius: 1.0,
+            diskHeight: 0.25,
+            diskGap: 0.02,
+
+            // Rod settings
+            rodHeight: 3,
+            rodRadius: 0.08,
+            rodSpacing: 3,
+            rodPositions: [-3, 0, 3],
+
+            // Gesture settings
+            // Pinch threshold: normalized distance between thumb and index finger
+            // Lower value = fingers must be closer together to trigger pinch
+            PINCH_THRESHOLD: 0.06,
+
+            // Animation settings
+            liftHeight: 2.5,
+            animationSpeed: 0.15
+        };
+
+        /* ============================================
+           GAME STATE
+           ============================================ */
+        const gameState = {
+            numDisks: 3,
+            rods: [[], [], []], // Array of disk indices on each rod
+            disks: [], // Three.js mesh objects
+            moveCount: 0,
+            startTime: null,
+            timerInterval: null,
+            isPlaying: false,
+            gestureMode: false,
+
+            // Interaction state
+            selectedDisk: null,
+            selectedDiskOriginalRod: null,
+            isDragging: false,
+
+            // Gesture state with smoothing
+            isPinching: false,
+            handPosition: { x: 0.5, y: 0.5 },           // Raw hand position
+            smoothedHandPosition: { x: 0.5, y: 0.5 },   // Smoothed for display
+            targetHandPosition: { x: 0.5, y: 0.5 },     // Target for lerp
+            lastPinchState: false,
+
+            // Pinch gesture buffer for stability (prevents jitter)
+            pinchBuffer: [],
+            PINCH_BUFFER_SIZE: 5,
+
+            // Smoothing parameters
+            POSITION_SMOOTHING: 0.3,      // Higher = smoother but more lag (0.1-0.5)
+            DISK_FOLLOW_SPEED: 0.15,       // How fast disk follows hand
+
+            // Target position for smooth disk movement
+            targetDiskPosition: { x: 0, z: 0 },
+
+            // Animation
+            animations: []
+        };
+
+        /* ============================================
+           THREE.JS SETUP
+           ============================================ */
+        let scene, camera, renderer, controls;
+        let base, rods = [];
+        let raycaster, mouse;
+        let groundPlane;
+        let cursor3D;
+
+        // DOM element cache for performance
+        const DOM = {
+            moveCount: null,
+            timer: null,
+            minMoves: null,
+            diskSlider: null,
+            diskCount: null,
+            winOverlay: null,
+            winStats: null,
+            messageToast: null,
+            loadingOverlay: null,
+            loadingText: null,
+            diskSelectionIndicator: null,
+            diskPreview: null
+        };
+
+        // Initialize DOM cache
+        function initDOMCache() {
+            DOM.moveCount = document.getElementById('move-count');
+            DOM.timer = document.getElementById('timer');
+            DOM.minMoves = document.getElementById('min-moves');
+            DOM.diskSlider = document.getElementById('disk-slider');
+            DOM.diskCount = document.getElementById('disk-count');
+            DOM.winOverlay = document.getElementById('win-overlay');
+            DOM.winStats = document.getElementById('win-stats');
+            DOM.messageToast = document.getElementById('message-toast');
+            DOM.loadingOverlay = document.getElementById('loading-overlay');
+            DOM.loadingText = document.getElementById('loading-text');
+            DOM.diskSelectionIndicator = document.getElementById('disk-selection-indicator');
+            DOM.diskPreview = document.getElementById('disk-preview');
+        }
+
+        function initThreeJS() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(
+                60,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000
+            );
+            camera.position.set(0, 10, 14);
+            camera.lookAt(0, 1, 0);
+
+            // Renderer - OPTIMIZED for low-cost computers
+            const canvas = document.getElementById('three-canvas');
+            renderer = new THREE.WebGLRenderer({
+                canvas,
+                antialias: false, // Disable antialiasing for performance
+                powerPreference: 'low-power' // Prefer integrated GPU
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Lower max pixel ratio
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFShadowMap; // Faster shadow map type
+
+            // Orbit Controls (limited for better UX)
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2.2;
+            controls.minDistance = 5;
+            controls.maxDistance = 20;
+
+            // Raycaster for mouse/gesture interaction
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            // Ground plane for raycasting
+            groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+            // Lighting
+            setupLighting();
+
+            // Create game objects
+            createBase();
+            createRods();
+            createCursor3D();
+
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function setupLighting() {
+            // Ambient light
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            // Main directional light - OPTIMIZED shadow settings
+            const mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            mainLight.position.set(5, 10, 5);
+            mainLight.castShadow = true;
+            mainLight.shadow.mapSize.width = 1024;  // Reduced from 2048
+            mainLight.shadow.mapSize.height = 1024; // Reduced from 2048
+            mainLight.shadow.camera.near = 0.5;
+            mainLight.shadow.camera.far = 30; // Reduced shadow distance
+            mainLight.shadow.camera.left = -8;
+            mainLight.shadow.camera.right = 8;
+            mainLight.shadow.camera.top = 8;
+            mainLight.shadow.camera.bottom = -8;
+            scene.add(mainLight);
+
+            // Fill light
+            const fillLight = new THREE.DirectionalLight(0x00d9ff, 0.3);
+            fillLight.position.set(-5, 5, -5);
+            scene.add(fillLight);
+
+            // Back light
+            const backLight = new THREE.DirectionalLight(0xff6b6b, 0.2);
+            backLight.position.set(0, 5, -10);
+            scene.add(backLight);
+        }
+
+        function createBase() {
+            // Create wooden-looking base platform
+            const baseGeometry = new THREE.BoxGeometry(12, 0.4, 4);
+            const baseMaterial = new THREE.MeshStandardMaterial({
+                color: 0x8B4513,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+            base = new THREE.Mesh(baseGeometry, baseMaterial);
+            base.position.y = -0.2;
+            base.receiveShadow = true;
+            scene.add(base);
+
+            // Add decorative edge
+            const edgeGeometry = new THREE.BoxGeometry(12.2, 0.1, 4.2);
+            const edgeMaterial = new THREE.MeshStandardMaterial({
+                color: 0x654321,
+                roughness: 0.7,
+                metalness: 0.2
+            });
+            const edge = new THREE.Mesh(edgeGeometry, edgeMaterial);
+            edge.position.y = 0.05;
+            scene.add(edge);
+
+            // Floor for shadows - OPTIMIZED: smaller plane
+            const floorGeometry = new THREE.PlaneGeometry(20, 20);
+            const floorMaterial = new THREE.ShadowMaterial({ opacity: 0.3 });
+            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -0.4;
+            floor.receiveShadow = true;
+            scene.add(floor);
+        }
+
+        function createRods() {
+            rods = [];
+            CONFIG.rodPositions.forEach((xPos, index) => {
+                // Rod cylinder
+                const rodGeometry = new THREE.CylinderGeometry(
+                    CONFIG.rodRadius,
+                    CONFIG.rodRadius,
+                    CONFIG.rodHeight,
+                    16
+                );
+                const rodMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xC0C0C0,
+                    roughness: 0.3,
+                    metalness: 0.8
+                });
+                const rod = new THREE.Mesh(rodGeometry, rodMaterial);
+                rod.position.set(xPos, CONFIG.rodHeight / 2, 0);
+                rod.castShadow = true;
+                rod.userData.rodIndex = index;
+                scene.add(rod);
+                rods.push(rod);
+
+                // Rod base (decorative)
+                const baseGeometry = new THREE.CylinderGeometry(0.2, 0.25, 0.1, 16);
+                const baseMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xA0A0A0,
+                    roughness: 0.4,
+                    metalness: 0.7
+                });
+                const rodBase = new THREE.Mesh(baseGeometry, baseMaterial);
+                rodBase.position.set(xPos, 0.05, 0);
+                scene.add(rodBase);
+
+                // Rod top (decorative ball) - OPTIMIZED segments
+                const topGeometry = new THREE.SphereGeometry(0.12, 8, 8);
+                const top = new THREE.Mesh(topGeometry, rodMaterial);
+                top.position.set(xPos, CONFIG.rodHeight, 0);
+                top.castShadow = true;
+                scene.add(top);
+            });
+        }
+
+        function createCursor3D() {
+            // 3D cursor for gesture mode
+            const cursorGeometry = new THREE.SphereGeometry(0.15, 16, 16);
+            const cursorMaterial = new THREE.MeshStandardMaterial({
+                color: 0x00d9ff,
+                emissive: 0x00d9ff,
+                emissiveIntensity: 0.5,
+                transparent: true,
+                opacity: 0.8
+            });
+            cursor3D = new THREE.Mesh(cursorGeometry, cursorMaterial);
+            cursor3D.visible = false;
+            scene.add(cursor3D);
+        }
+
+        function createDisks() {
+            // Remove existing disks
+            gameState.disks.forEach(disk => scene.remove(disk));
+            gameState.disks = [];
+            gameState.rods = [[], [], []];
+
+            const numDisks = gameState.numDisks;
+            const radiusStep = (CONFIG.diskMaxRadius - CONFIG.diskMinRadius) / (numDisks - 1 || 1);
+
+            for (let i = 0; i < numDisks; i++) {
+                // Larger disks at the bottom (index 0 = largest)
+                const radius = CONFIG.diskMaxRadius - i * radiusStep;
+
+                const diskGeometry = new THREE.CylinderGeometry(
+                    radius,
+                    radius,
+                    CONFIG.diskHeight,
+                    16 // OPTIMIZED: reduced from 32 segments
+                );
+
+                const diskMaterial = new THREE.MeshStandardMaterial({
+                    color: CONFIG.diskColors[i % CONFIG.diskColors.length],
+                    roughness: 0.4,
+                    metalness: 0.3,
+                    emissive: CONFIG.diskColors[i % CONFIG.diskColors.length],
+                    emissiveIntensity: 0.1
+                });
+
+                const disk = new THREE.Mesh(diskGeometry, diskMaterial);
+                disk.castShadow = true;
+                disk.receiveShadow = true;
+
+                // Store disk data
+                disk.userData = {
+                    diskIndex: i,
+                    size: numDisks - i, // Larger size = larger disk
+                    radius: radius,
+                    originalColor: CONFIG.diskColors[i % CONFIG.diskColors.length]
+                };
+
+                // Position on first rod (bottom to top: largest disk at bottom)
+                // Disk 0 = largest = bottom (y=0.125), disk n-1 = smallest = top
+                const yPos = i * (CONFIG.diskHeight + CONFIG.diskGap) + CONFIG.diskHeight / 2;
+                disk.position.set(CONFIG.rodPositions[0], yPos, 0);
+
+                scene.add(disk);
+                gameState.disks.push(disk);
+                gameState.rods[0].push(i);
+            }
+
+            // Update minimum moves display
+            DOM.minMoves.textContent = Math.pow(2, numDisks) - 1;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        /* ============================================
+           GAME LOGIC
+           ============================================ */
+
+        /**
+         * Check if a move is valid according to Tower of Hanoi rules
+         * @param {number} diskSize - Size of disk being moved (larger = bigger disk)
+         * @param {number} targetRod - Index of target rod (0, 1, or 2)
+         * @returns {boolean} - Whether the move is valid
+         */
+        function isValidMove(diskSize, targetRod) {
+            const targetStack = gameState.rods[targetRod];
+
+            // Empty rod - always valid
+            if (targetStack.length === 0) {
+                return true;
+            }
+
+            // Get size of top disk on target rod
+            const topDiskIndex = targetStack[targetStack.length - 1];
+            const topDiskSize = gameState.disks[topDiskIndex].userData.size;
+
+            // Valid only if moving disk is smaller than top disk
+            // (Remember: larger size number = bigger disk)
+            return diskSize < topDiskSize;
+        }
+
+        /**
+         * Get the rod index that a disk is currently on
+         * @param {number} diskIndex - Index of the disk
+         * @returns {number} - Rod index (0, 1, or 2)
+         */
+        function getDiskRod(diskIndex) {
+            for (let rodIndex = 0; rodIndex < 3; rodIndex++) {
+                if (gameState.rods[rodIndex].includes(diskIndex)) {
+                    return rodIndex;
+                }
+            }
+            return -1;
+        }
+
+        /**
+         * Find the nearest rod to a given x position
+         * @param {number} xPos - X position in world coordinates
+         * @returns {number} - Index of nearest rod (0, 1, or 2)
+         */
+        function getNearestRod(xPos) {
+            let nearestRod = 0;
+            let minDist = Infinity;
+
+            CONFIG.rodPositions.forEach((rodX, index) => {
+                const dist = Math.abs(xPos - rodX);
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearestRod = index;
+                }
+            });
+
+            return nearestRod;
+        }
+
+        /**
+         * Get the Y position for stacking a disk on a rod
+         * @param {number} rodIndex - Index of the rod
+         * @returns {number} - Y position for the disk
+         */
+        function getStackYPosition(rodIndex) {
+            const stackHeight = gameState.rods[rodIndex].length;
+            return stackHeight * (CONFIG.diskHeight + CONFIG.diskGap) + CONFIG.diskHeight / 2;
+        }
+
+        /**
+         * Move a disk to a new rod with animation
+         * @param {number} diskIndex - Index of disk to move
+         * @param {number} targetRod - Target rod index
+         * @param {boolean} isValid - Whether this is a valid move
+         */
+        function moveDisk(diskIndex, targetRod, isValid = true) {
+            const disk = gameState.disks[diskIndex];
+            const currentRod = getDiskRod(diskIndex);
+
+            if (isValid) {
+                // Calculate target Y position BEFORE modifying rod arrays
+                // This gets the correct stack height for where the disk will land
+                const targetStackHeight = gameState.rods[targetRod].length;
+                const targetY = targetStackHeight * (CONFIG.diskHeight + CONFIG.diskGap) + CONFIG.diskHeight / 2;
+                const targetX = CONFIG.rodPositions[targetRod];
+
+                // Remove from current rod
+                const currentStack = gameState.rods[currentRod];
+                currentStack.splice(currentStack.indexOf(diskIndex), 1);
+
+                // Add to target rod
+                gameState.rods[targetRod].push(diskIndex);
+
+                // Increment move count
+                gameState.moveCount++;
+                DOM.moveCount.textContent = gameState.moveCount;
+
+                // Animate to new position
+                animateDiskTo(disk, targetX, targetY);
+
+                // Check win condition
+                checkWinCondition();
+            } else {
+                // Invalid move - return to original position
+                showMessage('Invalid Move!', 'error');
+
+                // Calculate correct Y position for current rod (disk is still on this rod)
+                const stackIndex = gameState.rods[currentRod].indexOf(diskIndex);
+                const originalY = stackIndex * (CONFIG.diskHeight + CONFIG.diskGap) + CONFIG.diskHeight / 2;
+                const originalX = CONFIG.rodPositions[currentRod];
+
+                animateDiskTo(disk, originalX, originalY);
+            }
+        }
+
+        /**
+         * Animate a disk to a target position
+         * @param {THREE.Mesh} disk - Disk mesh to animate
+         * @param {number} targetX - Target X position
+         * @param {number} targetY - Target Y position
+         */
+        function animateDiskTo(disk, targetX, targetY) {
+            const animation = {
+                disk: disk,
+                startPos: disk.position.clone(),
+                targetPos: new THREE.Vector3(targetX, targetY, 0),
+                progress: 0,
+                phase: 'lift' // lift, move, drop
+            };
+            gameState.animations.push(animation);
+        }
+
+        /**
+         * Check if the game is won (all disks on rod 3)
+         */
+        function checkWinCondition() {
+            if (gameState.rods[2].length === gameState.numDisks) {
+                // All disks on the last rod - WIN!
+                gameState.isPlaying = false;
+                clearInterval(gameState.timerInterval);
+
+                // Show win overlay
+                setTimeout(() => {
+                    DOM.winStats.textContent = `Moves: ${gameState.moveCount} | Time: ${DOM.timer.textContent}`;
+                    DOM.winOverlay.classList.add('show');
+                }, 500);
+            }
+        }
+
+        /**
+         * Show a toast message
+         */
+        function showMessage(text, type = 'error') {
+            DOM.messageToast.textContent = text;
+            DOM.messageToast.className = 'show' + (type === 'success' ? ' success' : '');
+
+            setTimeout(() => {
+                DOM.messageToast.classList.remove('show', 'success');
+            }, 1500);
+        }
+
+        /**
+         * Show disk selection indicator with the selected disk's color
+         * @param {THREE.Mesh} disk - The selected disk mesh
+         */
+        function showDiskSelectionIndicator(disk) {
+            const diskColor = disk.userData.originalColor;
+
+            // Set the preview color to match the disk
+            DOM.diskPreview.style.backgroundColor = diskColor;
+            DOM.diskPreview.style.color = diskColor; // For the box-shadow animation
+
+            // Show the indicator with animation
+            DOM.diskSelectionIndicator.classList.add('show');
+        }
+
+        /**
+         * Hide the disk selection indicator
+         */
+        function hideDiskSelectionIndicator() {
+            DOM.diskSelectionIndicator.classList.remove('show');
+        }
+
+        /**
+         * Restart the game
+         */
+        function restartGame() {
+            // Reset state
+            gameState.moveCount = 0;
+            gameState.startTime = null;
+            gameState.isPlaying = false;
+            gameState.selectedDisk = null;
+            gameState.isDragging = false;
+            gameState.animations = [];
+
+            // Reset UI
+            DOM.moveCount.textContent = '0';
+            DOM.timer.textContent = '00:00';
+            DOM.winOverlay.classList.remove('show');
+
+            // Clear timer
+            if (gameState.timerInterval) {
+                clearInterval(gameState.timerInterval);
+            }
+
+            // Recreate disks
+            createDisks();
+        }
+
+        /**
+         * Start the game timer
+         */
+        function startTimer() {
+            if (gameState.startTime) return;
+
+            gameState.startTime = Date.now();
+            gameState.isPlaying = true;
+
+            gameState.timerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - gameState.startTime) / 1000);
+                const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+                const seconds = (elapsed % 60).toString().padStart(2, '0');
+                DOM.timer.textContent = `${minutes}:${seconds}`;
+            }, 1000);
+        }
+
+        /* ============================================
+           MOUSE/CLICK CONTROL
+           ============================================ */
+        let mouseDown = false;
+        let hoveredDisk = null;
+
+        function setupMouseControls() {
+            const canvas = renderer.domElement;
+
+            canvas.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('mousemove', onMouseMove);
+            canvas.addEventListener('mouseup', onMouseUp);
+            canvas.addEventListener('mouseleave', onMouseUp);
+        }
+
+        function onMouseDown(event) {
+            if (gameState.gestureMode) return;
+            if (gameState.animations.length > 0) return;
+
+            updateMousePosition(event);
+
+            // Check if clicking on a disk
+            const intersects = getIntersectedDisks();
+
+            if (intersects.length > 0) {
+                const clickedDisk = intersects[0].object;
+                const diskIndex = clickedDisk.userData.diskIndex;
+                const rodIndex = getDiskRod(diskIndex);
+
+                // Can only pick up top disk of a rod
+                const topDiskIndex = gameState.rods[rodIndex][gameState.rods[rodIndex].length - 1];
+
+                if (diskIndex === topDiskIndex) {
+                    mouseDown = true;
+                    gameState.selectedDisk = clickedDisk;
+                    gameState.selectedDiskOriginalRod = rodIndex;
+                    gameState.isDragging = true;
+
+                    // Highlight selected disk with enhanced glow effect
+                    clickedDisk.material.emissiveIntensity = 0.8;
+
+                    // Add scale effect to show it's selected
+                    clickedDisk.scale.set(1.05, 1.1, 1.05);
+
+                    // Show disk selection indicator
+                    showDiskSelectionIndicator(clickedDisk);
+
+                    // Lift disk up
+                    clickedDisk.position.y = CONFIG.liftHeight;
+
+                    // Disable orbit controls while dragging
+                    controls.enabled = false;
+
+                    // Start timer on first move
+                    startTimer();
+                }
+            }
+        }
+
+        function onMouseMove(event) {
+            updateMousePosition(event);
+
+            if (gameState.gestureMode) return;
+
+            // Highlight hovered disk
+            updateHoveredDisk();
+
+            // Drag selected disk
+            if (gameState.isDragging && gameState.selectedDisk) {
+                const worldPos = getMouseWorldPosition();
+                if (worldPos) {
+                    gameState.selectedDisk.position.x = worldPos.x;
+                    gameState.selectedDisk.position.z = worldPos.z;
+                }
+            }
+        }
+
+        function onMouseUp(event) {
+            if (gameState.gestureMode) return;
+
+            if (gameState.isDragging && gameState.selectedDisk) {
+                const disk = gameState.selectedDisk;
+                const diskIndex = disk.userData.diskIndex;
+                const diskSize = disk.userData.size;
+                const originalRod = gameState.selectedDiskOriginalRod;
+
+                // Find nearest rod
+                const targetRod = getNearestRod(disk.position.x);
+
+                // Reset disk appearance
+                disk.material.emissiveIntensity = 0.1;
+                disk.scale.set(1, 1, 1); // Reset scale
+
+                // Hide disk selection indicator
+                hideDiskSelectionIndicator();
+
+                // Check if valid move
+                if (targetRod !== originalRod && isValidMove(diskSize, targetRod)) {
+                    moveDisk(diskIndex, targetRod, true);
+                } else if (targetRod !== originalRod) {
+                    moveDisk(diskIndex, originalRod, false);
+                } else {
+                    // Dropped on same rod - just snap back
+                    const yPos = getStackYPosition(originalRod);
+                    animateDiskTo(disk, CONFIG.rodPositions[originalRod], yPos);
+                }
+            }
+
+            mouseDown = false;
+            gameState.selectedDisk = null;
+            gameState.isDragging = false;
+            controls.enabled = true;
+
+            // Ensure selection indicator is hidden
+            hideDiskSelectionIndicator();
+        }
+
+        function updateMousePosition(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        }
+
+        function getIntersectedDisks() {
+            raycaster.setFromCamera(mouse, camera);
+            return raycaster.intersectObjects(gameState.disks);
+        }
+
+        function getMouseWorldPosition() {
+            raycaster.setFromCamera(mouse, camera);
+            const intersection = new THREE.Vector3();
+            const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -CONFIG.liftHeight);
+
+            if (raycaster.ray.intersectPlane(plane, intersection)) {
+                return intersection;
+            }
+            return null;
+        }
+
+        function updateHoveredDisk() {
+            if (gameState.isDragging) return;
+
+            const intersects = getIntersectedDisks();
+
+            // Reset previous hovered disk
+            if (hoveredDisk && hoveredDisk !== gameState.selectedDisk) {
+                hoveredDisk.material.emissiveIntensity = 0.1;
+            }
+
+            if (intersects.length > 0) {
+                const disk = intersects[0].object;
+                const diskIndex = disk.userData.diskIndex;
+                const rodIndex = getDiskRod(diskIndex);
+                const topDiskIndex = gameState.rods[rodIndex][gameState.rods[rodIndex].length - 1];
+
+                // Only highlight if it's the top disk
+                if (diskIndex === topDiskIndex) {
+                    hoveredDisk = disk;
+                    disk.material.emissiveIntensity = 0.3;
+                    document.body.style.cursor = 'grab';
+                } else {
+                    hoveredDisk = null;
+                    document.body.style.cursor = 'default';
+                }
+            } else {
+                hoveredDisk = null;
+                document.body.style.cursor = 'default';
+            }
+        }
+
+        /* ============================================
+           MEDIAPIPE HANDS INTEGRATION
+           ============================================ */
+        let hands, camera2D, canvasCtx;
+        let mediaPipeReady = false;
+
+        async function initializeMediaPipe() {
+            const videoElement = document.getElementById('webcam');
+            const canvasElement = document.getElementById('webcam-canvas');
+            canvasCtx = canvasElement.getContext('2d');
+
+            // Set canvas size
+            canvasElement.width = 320;
+            canvasElement.height = 240;
+
+            try {
+                document.getElementById('loading-text').textContent = 'Requesting camera access...';
+
+                // Request camera access using getUserMedia (proven approach)
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: 640,
+                        height: 480,
+                        facingMode: 'user'
+                    }
+                });
+
+                videoElement.srcObject = stream;
+
+                // Wait for video to be ready
+                await new Promise(resolve => {
+                    videoElement.onloadedmetadata = () => {
+                        videoElement.play();
+                        resolve();
+                    };
+                });
+
+                document.getElementById('loading-text').textContent = 'Initializing hand tracking...';
+
+                // Initialize MediaPipe Hands (using global from script tag)
+                hands = new Hands({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                });
+
+                hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.6,
+                    minTrackingConfidence: 0.5
+                });
+
+                hands.onResults(onHandResults);
+
+                // Create camera handler (using global Camera from script tag)
+                camera2D = new Camera(videoElement, {
+                    onFrame: async () => {
+                        if (gameState.gestureMode && hands) {
+                            await hands.send({ image: videoElement });
+                        }
+                    },
+                    width: 640,
+                    height: 480
+                });
+
+                mediaPipeReady = true;
+                document.getElementById('loading-text').textContent = 'Ready! ✓';
+                console.log('MediaPipe initialized successfully');
+
+            } catch (error) {
+                console.error('MediaPipe initialization error:', error);
+
+                // Provide helpful error messages
+                if (error.name === 'NotAllowedError') {
+                    document.getElementById('loading-text').textContent = 'Camera access denied. Using mouse mode.';
+                } else if (error.name === 'NotFoundError') {
+                    document.getElementById('loading-text').textContent = 'No camera found. Using mouse mode.';
+                } else {
+                    document.getElementById('loading-text').textContent = 'Camera error. Using mouse mode.';
+                }
+
+                mediaPipeReady = false;
+            }
+
+            // Hide loading after a brief delay
+            setTimeout(() => {
+                document.getElementById('loading-overlay').classList.add('hidden');
+            }, 800);
+        }
+
+        /**
+         * Process hand detection results from MediaPipe
+         * Now with smoothing and stabilization for better UX
+         * @param {Object} results - MediaPipe hand detection results
+         */
+        function onHandResults(results) {
+            if (!gameState.gestureMode) return;
+
+            const canvasElement = document.getElementById('webcam-canvas');
+
+            // Clear canvas
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+
+                // Draw hand landmarks on webcam preview
+                drawHandLandmarks(landmarks, canvasElement);
+
+                // Get key landmarks for pinch detection
+                // Landmark indices: 4 = Thumb tip, 8 = Index finger tip
+                const thumbTip = landmarks[4];
+                const indexTip = landmarks[8];
+                const palmCenter = landmarks[9]; // Middle finger MCP - stable reference
+
+                // Calculate pinch distance (normalized 0-1)
+                const pinchDistance = Math.sqrt(
+                    Math.pow(thumbTip.x - indexTip.x, 2) +
+                    Math.pow(thumbTip.y - indexTip.y, 2) +
+                    Math.pow((thumbTip.z || 0) - (indexTip.z || 0), 2) * 0.5 // Include depth
+                );
+
+                // Determine raw pinch state
+                const rawPinching = pinchDistance < CONFIG.PINCH_THRESHOLD;
+
+                // ============================================
+                // PINCH STABILIZATION (Gesture Buffer)
+                // Prevents jittery on/off switching
+                // ============================================
+                gameState.pinchBuffer.push(rawPinching);
+                if (gameState.pinchBuffer.length > gameState.PINCH_BUFFER_SIZE) {
+                    gameState.pinchBuffer.shift();
+                }
+
+                // Count true/false in buffer
+                const pinchCount = gameState.pinchBuffer.filter(Boolean).length;
+                const stabilizedPinching = pinchCount >= Math.ceil(gameState.PINCH_BUFFER_SIZE * 0.6);
+
+                // ============================================
+                // POSITION SMOOTHING (Exponential Moving Average)
+                // Reduces hand tracking jitter
+                // ============================================
+                // Raw position (flipped for mirrored webcam)
+                const rawX = 1 - indexTip.x;
+                const rawY = indexTip.y;
+
+                // Apply exponential smoothing
+                const smoothing = gameState.POSITION_SMOOTHING;
+                gameState.smoothedHandPosition.x += (rawX - gameState.smoothedHandPosition.x) * smoothing;
+                gameState.smoothedHandPosition.y += (rawY - gameState.smoothedHandPosition.y) * smoothing;
+
+                // Update target position for cursor
+                gameState.targetHandPosition.x = gameState.smoothedHandPosition.x;
+                gameState.targetHandPosition.y = gameState.smoothedHandPosition.y;
+
+                // Store raw position too
+                gameState.handPosition.x = rawX;
+                gameState.handPosition.y = rawY;
+
+                // Update 3D cursor with smoothed position
+                updateCursor3D(pinchDistance);
+
+                // Update gesture indicator UI with pinch strength feedback
+                updateGestureIndicator(stabilizedPinching, pinchDistance);
+
+                // Handle gesture state changes with stabilized pinch
+                handleGestureState(stabilizedPinching);
+
+                gameState.lastPinchState = stabilizedPinching;
+            } else {
+                // No hand detected - fade out gracefully
+                cursor3D.visible = false;
+                document.getElementById('cursor-indicator').style.display = 'none';
+
+                // Clear pinch buffer when no hand
+                gameState.pinchBuffer = [];
+            }
+        }
+
+        /**
+         * Draw hand landmarks on webcam canvas
+         */
+        function drawHandLandmarks(landmarks, canvas) {
+            const ctx = canvasCtx;
+            const width = canvas.width;
+            const height = canvas.height;
+
+            // Draw connections
+            const connections = [
+                [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+                [0, 5], [5, 6], [6, 7], [7, 8], // Index
+                [0, 9], [9, 10], [10, 11], [11, 12], // Middle
+                [0, 13], [13, 14], [14, 15], [15, 16], // Ring
+                [0, 17], [17, 18], [18, 19], [19, 20], // Pinky
+                [5, 9], [9, 13], [13, 17] // Palm
+            ];
+
+            ctx.strokeStyle = 'rgba(0, 217, 255, 0.6)';
+            ctx.lineWidth = 2;
+
+            connections.forEach(([i, j]) => {
+                const p1 = landmarks[i];
+                const p2 = landmarks[j];
+                ctx.beginPath();
+                ctx.moveTo(p1.x * width, p1.y * height);
+                ctx.lineTo(p2.x * width, p2.y * height);
+                ctx.stroke();
+            });
+
+            // Draw landmark points
+            landmarks.forEach((landmark, index) => {
+                const x = landmark.x * width;
+                const y = landmark.y * height;
+
+                ctx.beginPath();
+                ctx.arc(x, y, index === 4 || index === 8 ? 6 : 3, 0, Math.PI * 2);
+
+                if (index === 4 || index === 8) {
+                    // Highlight thumb and index fingertips
+                    ctx.fillStyle = '#ff6b6b';
+                } else {
+                    ctx.fillStyle = '#00d9ff';
+                }
+                ctx.fill();
+            });
+        }
+
+        /**
+         * Update 3D cursor position based on smoothed hand position
+         * @param {number} pinchDistance - Current distance between thumb and index (for visual feedback)
+         */
+        function updateCursor3D(pinchDistance = 0.1) {
+            // Use SMOOTHED position for cursor (reduces jitter dramatically)
+            const smoothX = gameState.smoothedHandPosition.x;
+            const smoothY = gameState.smoothedHandPosition.y;
+
+            // Convert hand position (0-1) to screen coordinates (-1 to 1)
+            mouse.x = smoothX * 2 - 1;
+            mouse.y = -(smoothY * 2 - 1);
+
+            // Update 2D cursor indicator with smooth position
+            const cursorIndicator = document.getElementById('cursor-indicator');
+            cursorIndicator.style.display = 'block';
+            cursorIndicator.style.left = `${smoothX * window.innerWidth}px`;
+            cursorIndicator.style.top = `${smoothY * window.innerHeight}px`;
+
+            // Dynamic cursor size based on pinch distance (visual feedback)
+            const pinchProgress = Math.max(0, 1 - (pinchDistance / CONFIG.PINCH_THRESHOLD));
+            const cursorScale = 1 - (pinchProgress * 0.3);
+            cursorIndicator.style.transform = `translate(-50%, -50%) scale(${cursorScale})`;
+
+            // Change cursor color based on pinch proximity
+            if (pinchProgress > 0.5) {
+                cursorIndicator.style.borderColor = '#ffa502';
+                cursorIndicator.style.boxShadow = `0 0 ${10 + pinchProgress * 20}px rgba(255, 165, 2, 0.5)`;
+            } else {
+                cursorIndicator.style.borderColor = '#00d9ff';
+                cursorIndicator.style.boxShadow = '';
+            }
+
+            // Project into 3D space
+            raycaster.setFromCamera(mouse, camera);
+            const planeY = gameState.isDragging ? CONFIG.liftHeight : 0;
+            const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
+            const intersection = new THREE.Vector3();
+
+            if (raycaster.ray.intersectPlane(plane, intersection)) {
+                // Smooth cursor 3D position too
+                cursor3D.position.lerp(intersection, 0.3);
+                cursor3D.position.y = planeY + 0.2;
+                cursor3D.visible = true;
+
+                // Update target disk position for smooth following
+                gameState.targetDiskPosition.x = intersection.x;
+                gameState.targetDiskPosition.z = intersection.z;
+            }
+        }
+
+        /**
+         * Update gesture indicator UI with pinch strength feedback
+         * @param {boolean} isPinching - Whether fingers are pinched
+         * @param {number} pinchDistance - Distance between thumb and index (for visual feedback)
+         */
+        function updateGestureIndicator(isPinching, pinchDistance = 0.1) {
+            const gestureIcon = document.getElementById('gesture-icon');
+            const gestureText = document.getElementById('gesture-text');
+            const cursorIndicator = document.getElementById('cursor-indicator');
+
+            if (isPinching) {
+                cursorIndicator.classList.add('grabbing');
+
+                if (gameState.isDragging) {
+                    // Holding a disk
+                    gestureIcon.className = 'gesture-icon grabbing';
+                    gestureIcon.textContent = '🤏';
+                    gestureText.textContent = 'Holding Disk';
+                } else {
+                    // Pinching but not on a disk
+                    gestureIcon.className = 'gesture-icon grabbing';
+                    gestureIcon.textContent = '🤏';
+                    gestureText.textContent = 'Pinching';
+                }
+            } else {
+                cursorIndicator.classList.remove('grabbing');
+
+                // Show pinch proximity feedback
+                const pinchProgress = Math.max(0, 1 - (pinchDistance / CONFIG.PINCH_THRESHOLD));
+
+                if (pinchProgress > 0.7) {
+                    gestureIcon.className = 'gesture-icon ready';
+                    gestureIcon.textContent = '👌';
+                    gestureText.textContent = 'Almost...';
+                } else {
+                    gestureIcon.className = 'gesture-icon open';
+                    gestureIcon.textContent = '✋';
+                    gestureText.textContent = 'Open Hand';
+                }
+            }
+        }
+
+        /**
+         * Handle gesture state changes for game interaction
+         * This is the core gesture logic for picking up and dropping disks
+         */
+        function handleGestureState(isPinching) {
+            if (gameState.animations.length > 0) return;
+
+            // Detect pinch start (transition from open to pinch)
+            if (isPinching && !gameState.lastPinchState) {
+                // PINCH STARTED - try to grab a disk
+                const intersects = getIntersectedDisks();
+
+                if (intersects.length > 0 && !gameState.isDragging) {
+                    const disk = intersects[0].object;
+                    const diskIndex = disk.userData.diskIndex;
+                    const rodIndex = getDiskRod(diskIndex);
+                    const topDiskIndex = gameState.rods[rodIndex][gameState.rods[rodIndex].length - 1];
+
+                    // Can only pick up the top disk
+                    if (diskIndex === topDiskIndex) {
+                        gameState.selectedDisk = disk;
+                        gameState.selectedDiskOriginalRod = rodIndex;
+                        gameState.isDragging = true;
+
+                        // Visual feedback - enhanced glow and scale
+                        disk.material.emissiveIntensity = 0.8;
+                        disk.scale.set(1.05, 1.1, 1.05);
+                        disk.position.y = CONFIG.liftHeight;
+
+                        // Show disk selection indicator
+                        showDiskSelectionIndicator(disk);
+
+                        // Start timer
+                        startTimer();
+                    }
+                }
+            }
+
+            // Detect pinch release (transition from pinch to open)
+            if (!isPinching && gameState.lastPinchState) {
+                // PINCH RELEASED - drop the disk
+                if (gameState.isDragging && gameState.selectedDisk) {
+                    const disk = gameState.selectedDisk;
+                    const diskIndex = disk.userData.diskIndex;
+                    const diskSize = disk.userData.size;
+                    const originalRod = gameState.selectedDiskOriginalRod;
+
+                    // Find nearest rod
+                    const targetRod = getNearestRod(disk.position.x);
+
+                    // Reset appearance
+                    disk.material.emissiveIntensity = 0.1;
+                    disk.scale.set(1, 1, 1); // Reset scale
+
+                    // Hide disk selection indicator
+                    hideDiskSelectionIndicator();
+
+                    // Validate and move
+                    if (targetRod !== originalRod && isValidMove(diskSize, targetRod)) {
+                        moveDisk(diskIndex, targetRod, true);
+                    } else if (targetRod !== originalRod) {
+                        moveDisk(diskIndex, originalRod, false);
+                    } else {
+                        // Same rod - snap back
+                        const yPos = getStackYPosition(originalRod);
+                        animateDiskTo(disk, CONFIG.rodPositions[originalRod], yPos);
+                    }
+
+                    gameState.selectedDisk = null;
+                    gameState.isDragging = false;
+                }
+            }
+
+            // While pinching - SMOOTHLY move the held disk
+            if (isPinching && gameState.isDragging && gameState.selectedDisk) {
+                const disk = gameState.selectedDisk;
+
+                // Use lerp for smooth disk following (reduces jerky movement)
+                const followSpeed = gameState.DISK_FOLLOW_SPEED;
+                const targetX = gameState.targetDiskPosition.x;
+                const targetZ = gameState.targetDiskPosition.z;
+
+                // Smooth interpolation to target position
+                disk.position.x += (targetX - disk.position.x) * followSpeed;
+                disk.position.z += (targetZ - disk.position.z) * followSpeed;
+
+                // Keep disk at lift height while dragging
+                disk.position.y = CONFIG.liftHeight;
+
+                // Visual feedback: pulse glow while moving
+                const speed = Math.sqrt(
+                    Math.pow(targetX - disk.position.x, 2) +
+                    Math.pow(targetZ - disk.position.z, 2)
+                );
+                disk.material.emissiveIntensity = 0.5 + Math.min(speed * 0.5, 0.3);
+            }
+        }
+
+        /* ============================================
+           UI EVENT HANDLERS
+           ============================================ */
+        function setupUIHandlers() {
+            // Disk slider
+            const diskSlider = document.getElementById('disk-slider');
+            const diskCountDisplay = document.getElementById('disk-count');
+
+            diskSlider.addEventListener('input', (e) => {
+                const count = parseInt(e.target.value);
+                diskCountDisplay.textContent = count;
+            });
+
+            diskSlider.addEventListener('change', (e) => {
+                gameState.numDisks = parseInt(e.target.value);
+                restartGame();
+            });
+
+            // Gesture mode toggle
+            const gestureToggle = document.getElementById('gesture-toggle');
+            gestureToggle.addEventListener('click', async () => {
+                gameState.gestureMode = !gameState.gestureMode;
+                gestureToggle.classList.toggle('active');
+
+                const webcamContainer = document.getElementById('webcam-container');
+                const gestureIndicator = document.getElementById('gesture-indicator');
+                const instructions = document.getElementById('instructions');
+                const instructionsText = document.getElementById('instructions-text');
+
+                if (gameState.gestureMode) {
+                    // Check if MediaPipe is ready
+                    if (!mediaPipeReady || !camera2D) {
+                        showMessage('Camera not available. Please allow camera access.', 'error');
+                        gameState.gestureMode = false;
+                        gestureToggle.classList.remove('active');
+                        return;
+                    }
+
+                    webcamContainer.classList.remove('hidden');
+                    gestureIndicator.classList.remove('hidden');
+                    instructionsText.textContent = 'Pinch (thumb + index) to grab the top disk. Move your hand and release to drop!';
+                    instructions.classList.add('gesture-mode');
+                    cursor3D.visible = true;
+
+                    // Start camera
+                    try {
+                        await camera2D.start();
+                        console.log('Camera started for gesture mode');
+                    } catch (err) {
+                        console.error('Failed to start camera:', err);
+                        showMessage('Failed to start camera', 'error');
+                        gameState.gestureMode = false;
+                        gestureToggle.classList.remove('active');
+                        webcamContainer.classList.add('hidden');
+                        gestureIndicator.classList.add('hidden');
+                        return;
+                    }
+
+                    // Disable orbit controls in gesture mode
+                    controls.enabled = false;
+                } else {
+                    webcamContainer.classList.add('hidden');
+                    gestureIndicator.classList.add('hidden');
+                    instructionsText.textContent = 'Click and drag disks to move them between rods. Only smaller disks can be placed on larger ones!';
+                    instructions.classList.remove('gesture-mode');
+                    cursor3D.visible = false;
+                    document.getElementById('cursor-indicator').style.display = 'none';
+
+                    // Stop camera
+                    if (camera2D) {
+                        camera2D.stop();
+                    }
+
+                    // Enable orbit controls
+                    controls.enabled = true;
+
+                    // Reset any held disk
+                    if (gameState.selectedDisk) {
+                        gameState.selectedDisk.material.emissiveIntensity = 0.1;
+                        const originalRod = gameState.selectedDiskOriginalRod;
+                        const yPos = getStackYPosition(originalRod);
+                        animateDiskTo(gameState.selectedDisk, CONFIG.rodPositions[originalRod], yPos);
+                        gameState.selectedDisk = null;
+                        gameState.isDragging = false;
+                    }
+                }
+            });
+
+            // Restart button
+            document.getElementById('restart-btn').addEventListener('click', restartGame);
+
+            // Play again button
+            document.getElementById('play-again-btn').addEventListener('click', restartGame);
+        }
+
+        /* ============================================
+           ANIMATION LOOP
+           ============================================ */
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Update orbit controls
+            controls.update();
+
+            // Process animations
+            processAnimations();
+
+            // Render
+            renderer.render(scene, camera);
+        }
+
+        function processAnimations() {
+            const completedAnimations = [];
+
+            gameState.animations.forEach((anim, index) => {
+                const disk = anim.disk;
+                const speed = CONFIG.animationSpeed;
+
+                switch (anim.phase) {
+                    case 'lift':
+                        // Lift up
+                        disk.position.y += (CONFIG.liftHeight - disk.position.y) * speed * 2;
+                        if (Math.abs(disk.position.y - CONFIG.liftHeight) < 0.05) {
+                            disk.position.y = CONFIG.liftHeight;
+                            anim.phase = 'move';
+                        }
+                        break;
+
+                    case 'move':
+                        // Move horizontally
+                        disk.position.x += (anim.targetPos.x - disk.position.x) * speed;
+                        disk.position.z += (anim.targetPos.z - disk.position.z) * speed;
+
+                        if (Math.abs(disk.position.x - anim.targetPos.x) < 0.05 &&
+                            Math.abs(disk.position.z - anim.targetPos.z) < 0.05) {
+                            disk.position.x = anim.targetPos.x;
+                            disk.position.z = anim.targetPos.z;
+                            anim.phase = 'drop';
+                        }
+                        break;
+
+                    case 'drop':
+                        // Drop down
+                        disk.position.y += (anim.targetPos.y - disk.position.y) * speed * 2;
+                        if (Math.abs(disk.position.y - anim.targetPos.y) < 0.05) {
+                            disk.position.y = anim.targetPos.y;
+                            completedAnimations.push(index);
+                        }
+                        break;
+                }
+            });
+
+            // Remove completed animations (in reverse order to maintain indices)
+            completedAnimations.reverse().forEach(index => {
+                gameState.animations.splice(index, 1);
+            });
+        }
+
+        /* ============================================
+           INITIALIZATION
+           ============================================ */
+        async function init() {
+            // Initialize DOM cache first for performance
+            initDOMCache();
+
+            // Initialize Three.js
+            initThreeJS();
+
+            // Create initial disks
+            createDisks();
+
+            // Setup mouse controls
+            setupMouseControls();
+
+            // Setup UI handlers
+            setupUIHandlers();
+
+            // Initialize MediaPipe
+            await initializeMediaPipe();
+
+            // Start animation loop
+            animate();
+        }
+
+        // Start the app
+        init();
+    </script>
+</body>
+
+</html>

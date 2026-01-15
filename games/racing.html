@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏎️ Hand Gesture Racing Game</title>
+    <meta name="description" content="A 3D racing game controlled by hand gestures using MediaPipe and Three.js">
+    <link rel="stylesheet" href="../css/main.css">
+    <link rel="stylesheet" href="../css/racing-game.css">
+</head>
+
+<body>
+    <!-- Back Button -->
+    <a href="../index.html" class="back-btn">← Back to Hub</a>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="loading-title">🏎️ Hand Racing</div>
+        <div class="loading-bar-container">
+            <div class="loading-bar" id="loading-bar"></div>
+        </div>
+        <div class="loading-text" id="loading-text">Initializing...</div>
+    </div>
+
+    <!-- Start Menu -->
+    <div id="start-menu">
+        <div class="menu-title">🏎️ Hand Racing</div>
+        <div class="menu-subtitle">Control with your hands!</div>
+        <div class="high-score-display" id="high-score-display">🏆 High Score: 0</div>
+
+        <div class="instructions">
+            <h3>How to Play</h3>
+            <p><span class="icon">✋</span> Open palms = Accelerate</p>
+            <p><span class="icon">✊</span> Closed fists = Brake</p>
+            <p><span class="icon">👈</span> Tilt hands left = Steer left</p>
+            <p><span class="icon">👉</span> Tilt hands right = Steer right</p>
+            <p><span class="icon">🚫</span> Avoid red obstacles!</p>
+        </div>
+
+        <div class="difficulty-selector">
+            <button class="difficulty-btn selected" data-difficulty="easy">😊 Easy</button>
+            <button class="difficulty-btn" data-difficulty="medium">😐 Medium</button>
+            <button class="difficulty-btn" data-difficulty="hard">😈 Hard</button>
+        </div>
+
+        <button class="start-btn" id="calibrate-btn"
+            style="background: linear-gradient(90deg, #9b59b6, #8e44ad); margin-bottom: 10px;">🎯 Calibrate</button>
+        <button class="start-btn" id="start-btn">🚀 Start Race!</button>
+    </div>
+
+    <!-- Calibration Overlay (Enhanced) -->
+    <div id="calibration-overlay" style="display: none;">
+        <div class="calibration-content">
+            <div class="calibration-title" id="calibration-title">🎯 Calibration</div>
+
+            <!-- Hand Status Indicator -->
+            <div class="hand-status" id="hand-status">
+                <span class="hand-icon">🖐️</span>
+                <span class="status-text" id="hand-status-text">Đang tìm tay...</span>
+            </div>
+
+            <!-- Visual Guide Container -->
+            <div class="visual-guide" id="visual-guide">
+                <div class="guide-arrow left-arrow" id="left-arrow">👈</div>
+                <div class="guide-hand" id="guide-hand">🖐️</div>
+                <div class="guide-arrow right-arrow" id="right-arrow">👉</div>
+            </div>
+
+            <div class="calibration-instruction" id="calibration-instruction">Preparing...</div>
+            <div class="calibration-progress-container">
+                <div class="calibration-progress-bar" id="calibration-progress"></div>
+            </div>
+            <div class="calibration-step" id="calibration-step">Step 1 of 3</div>
+            <button class="start-btn" id="skip-calibration" style="background: #666; margin-top: 20px;">Skip</button>
+        </div>
+    </div>
+
+    <style>
+        #calibration-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .calibration-content {
+            text-align: center;
+            color: white;
+            padding: 40px;
+        }
+
+        .calibration-title {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+        }
+
+        .calibration-instruction {
+            font-size: 1.5em;
+            margin-bottom: 30px;
+            color: #00d9ff;
+        }
+
+        .calibration-progress-container {
+            width: 300px;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 0 auto 20px;
+        }
+
+        .calibration-progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            transition: width 0.1s;
+        }
+
+        .calibration-step {
+            font-size: 1.1em;
+            color: #888;
+        }
+
+        /* Hand Status Indicator */
+        .hand-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 10px 20px;
+            margin-bottom: 20px;
+            border-radius: 20px;
+            background: rgba(255, 100, 100, 0.3);
+            transition: all 0.3s;
+        }
+
+        .hand-status.detected {
+            background: rgba(0, 255, 136, 0.3);
+        }
+
+        .hand-status .hand-icon {
+            font-size: 1.5em;
+            animation: pulse 1s infinite;
+        }
+
+        .hand-status.detected .hand-icon {
+            animation: none;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.5;
+                transform: scale(0.9);
+            }
+        }
+
+        /* Visual Guide */
+        .visual-guide {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 30px;
+            margin: 30px 0;
+            font-size: 3em;
+        }
+
+        .guide-arrow {
+            opacity: 0.3;
+            transition: all 0.3s;
+        }
+
+        .guide-arrow.active {
+            opacity: 1;
+            animation: bounce 0.5s infinite;
+        }
+
+        .left-arrow.active {
+            animation: bounceLeft 0.5s infinite;
+        }
+
+        .right-arrow.active {
+            animation: bounceRight 0.5s infinite;
+        }
+
+        @keyframes bounceLeft {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            50% {
+                transform: translateX(-10px);
+            }
+        }
+
+        @keyframes bounceRight {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            50% {
+                transform: translateX(10px);
+            }
+        }
+
+        .guide-hand {
+            font-size: 1.5em;
+            transition: transform 0.3s;
+        }
+
+        .guide-hand.tilt-left {
+            transform: rotate(-30deg);
+        }
+
+        .guide-hand.tilt-right {
+            transform: rotate(30deg);
+        }
+    </style>
+
+    <!-- Game Container -->
+    <div id="game-container"></div>
+
+    <!-- HUD -->
+    <div id="hud" style="display: none;">
+        <div class="score-display">
+            <div class="score-label">Score</div>
+            <div class="score-value" id="score-value">0</div>
+        </div>
+        <div class="speed-display">
+            <div class="speed-label">Speed</div>
+            <div class="speed-value" id="speed-value">0 km/h</div>
+        </div>
+        <a href="../index.html" class="exit-btn-hud">Previous</a>
+    </div>
+
+    <style>
+        .exit-btn-hud {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 0, 0, 0.5);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            text-decoration: none;
+            font-size: 0.9em;
+            transition: background 0.3s;
+        }
+
+        .exit-btn-hud:hover {
+            background: rgba(255, 0, 0, 0.8);
+        }
+    </style>
+
+    <!-- Webcam Feed -->
+    <div id="webcam-container" style="display: none;">
+        <video id="webcam" autoplay playsinline></video>
+        <div class="webcam-guide">
+            <div class="guide-zone guide-left">
+                <span class="guide-label">👈 LEFT</span>
+            </div>
+            <div class="guide-zone guide-center">
+                <div class="guide-center-line"></div>
+                <div class="guide-center-dot"></div>
+            </div>
+            <div class="guide-zone guide-right">
+                <span class="guide-label">RIGHT 👉</span>
+            </div>
+        </div>
+        <div class="gesture-indicator" id="gesture-indicator">Detecting...</div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over">
+        <div class="game-over-title">💥 Game Over!</div>
+        <div class="final-score">Score: <span id="final-score">0</span></div>
+        <div class="new-high-score" id="new-high-score" style="display: none;">🎉 New High Score!</div>
+        <button class="retry-btn" id="retry-btn">🔄 Play Again</button>
+        <button class="retry-btn" id="menu-btn" style="background: linear-gradient(90deg, #ff6b6b, #ee5a5a);">🏠 Main
+            Menu</button>
+        <a href="../index.html" class="retry-btn"
+            style="background: linear-gradient(90deg, #445566, #334455); text-decoration: none; display: inline-block;">🔙
+            Back to Hub</a>
+    </div>
+
+    <!-- Audio Toggle -->
+    <button id="audio-toggle" style="display: none;">🔊</button>
+
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+    <script>
+        // ==================== ONE EURO FILTER (Signal Optimization - GĐ 1.1) ====================
+        class LowPassFilter {
+            constructor(alpha) { this.alpha = alpha; this.initialized = false; this.hatXPrev = 0; }
+            filter(x) {
+                if (!this.initialized) { this.initialized = true; this.hatXPrev = x; return x; }
+                const hatX = this.alpha * x + (1 - this.alpha) * this.hatXPrev;
+                this.hatXPrev = hatX;
+                return hatX;
+            }
+            setAlpha(alpha) { this.alpha = alpha; }
+            reset() { this.initialized = false; }
+        }
+
+        class OneEuroFilter {
+            constructor(freq, minCutoff = 1.0, beta = 0.007, dCutoff = 1.0) {
+                this.freq = freq; this.minCutoff = minCutoff; this.beta = beta; this.dCutoff = dCutoff;
+                this.xFilter = new LowPassFilter(this._alpha(minCutoff));
+                this.dxFilter = new LowPassFilter(this._alpha(dCutoff));
+                this.lastTime = null;
+            }
+            _alpha(cutoff) {
+                const te = 1.0 / this.freq;
+                const tau = 1.0 / (2 * Math.PI * cutoff);
+                return 1.0 / (1.0 + tau / te);
+            }
+            filter(x, timestamp = null) {
+                if (timestamp !== null && this.lastTime !== null) {
+                    const dt = (timestamp - this.lastTime) / 1000;
+                    if (dt > 0) this.freq = 1.0 / dt;
+                }
+                this.lastTime = timestamp;
+                const dx = this.xFilter.initialized ? (x - this.xFilter.hatXPrev) * this.freq : 0;
+                const edx = this.dxFilter.filter(dx);
+                const cutoff = this.minCutoff + this.beta * Math.abs(edx);
+                this.xFilter.setAlpha(this._alpha(cutoff));
+                return this.xFilter.filter(x);
+            }
+            reset() { this.xFilter.reset(); this.dxFilter.reset(); this.lastTime = null; }
+            getVelocity() { return this.dxFilter.hatXPrev || 0; }
+        }
+
+        // ==================== LATENCY PREDICTOR (GĐ 1.2) ====================
+        // Kinematic Prediction: P_render = P_detect + V_detect * Δt_lag
+        class LatencyPredictor {
+            constructor(lagMs = 60) {
+                this.lagSeconds = lagMs / 1000;  // 60ms average lag (camera + AI processing)
+                this.velocityFilter = new OneEuroFilter(30, 0.5, 0.005);
+            }
+            predict(currentValue, velocity, timestamp) {
+                const smoothedVelocity = this.velocityFilter.filter(velocity, timestamp);
+                return currentValue + smoothedVelocity * this.lagSeconds;
+            }
+            setLag(lagMs) { this.lagSeconds = lagMs / 1000; }
+        }
+
+        // ==================== CALIBRATION MANAGER (Phase 3 - Enhanced UX) ====================
+        class CalibrationManager {
+            constructor() {
+                this.storageKey = 'racingCalibration';
+                this.defaults = { maxSteeringAngle: 0.3, calibrated: false };
+                this.calibration = this.load();
+                this.isCalibrating = false;
+                this.currentPhase = null;
+                this.measurements = { left: [], right: [] };
+                this.handDetected = false;
+                this.handLostTime = 0;
+            }
+
+            async runCalibration(webcamElement, hands) {
+                this.isCalibrating = true;
+                this.measurements = { left: [], right: [] };
+                this.handDetected = false;
+
+                const overlay = document.getElementById('calibration-overlay');
+                const instruction = document.getElementById('calibration-instruction');
+                const progress = document.getElementById('calibration-progress');
+                const stepText = document.getElementById('calibration-step');
+                const handStatus = document.getElementById('hand-status');
+                const handStatusText = document.getElementById('hand-status-text');
+                const leftArrow = document.getElementById('left-arrow');
+                const rightArrow = document.getElementById('right-arrow');
+                const guideHand = document.getElementById('guide-hand');
+
+                overlay.style.display = 'flex';
+                this.updateVisualGuide('neutral');
+
+                try {
+                    // Phase 0: Wait for hand detection
+                    instruction.textContent = '🖐️ Đưa tay vào camera...';
+                    stepText.textContent = 'Đang chờ phát hiện tay';
+                    await this.waitForHand(webcamElement, hands, handStatus, handStatusText, 10000);
+
+                    if (!this.handDetected) {
+                        instruction.textContent = '❌ Không tìm thấy tay!';
+                        stepText.textContent = 'Hãy đảm bảo tay nằm trong khung hình';
+                        await new Promise(r => setTimeout(r, 2000));
+                        throw new Error('Hand not detected');
+                    }
+
+                    // Phase 1: Neutral position (prepare)
+                    instruction.textContent = '✅ Tay đã được phát hiện! Giữ THẲNG...';
+                    stepText.textContent = 'Bước 0: Chuẩn bị';
+                    this.updateVisualGuide('neutral');
+                    await this.countdown(progress, 2000);
+
+                    // Phase 2: Left tilt
+                    this.currentPhase = 'left';
+                    instruction.textContent = '👈 Nghiêng tay TRÁI hết cỡ!';
+                    stepText.textContent = 'Bước 1/2: Đo góc trái';
+                    this.updateVisualGuide('left');
+                    await this.measurePhase(webcamElement, hands, progress, handStatus, handStatusText, 3000);
+
+                    // Phase 3: Right tilt  
+                    this.currentPhase = 'right';
+                    instruction.textContent = '👉 Nghiêng tay PHẢI hết cỡ!';
+                    stepText.textContent = 'Bước 2/2: Đo góc phải';
+                    progress.style.width = '0%';
+                    this.updateVisualGuide('right');
+                    await this.measurePhase(webcamElement, hands, progress, handStatus, handStatusText, 3000);
+
+                    // Calculate results
+                    const leftMax = this.measurements.left.length > 0
+                        ? Math.max(...this.measurements.left.map(Math.abs)) : 0.15;
+                    const rightMax = this.measurements.right.length > 0
+                        ? Math.max(...this.measurements.right.map(Math.abs)) : 0.15;
+                    const maxAngle = Math.max(leftMax, rightMax, 0.1);
+
+                    this.calibration = {
+                        maxSteeringAngle: Math.min(0.5, maxAngle),
+                        leftMax, rightMax,
+                        calibrated: true,
+                        timestamp: Date.now(),
+                        sampleCount: this.measurements.left.length + this.measurements.right.length
+                    };
+                    this.save();
+
+                    // Show results
+                    instruction.textContent = '✅ Calibration hoàn thành!';
+                    stepText.textContent = `Góc max: ${(maxAngle * 100).toFixed(0)}% | Samples: ${this.calibration.sampleCount}`;
+                    progress.style.width = '100%';
+                    progress.style.background = 'linear-gradient(90deg, #00ff88, #00d9ff)';
+                    this.updateVisualGuide('success');
+
+                    await new Promise(r => setTimeout(r, 2000));
+
+                } catch (error) {
+                    console.error('Calibration error:', error);
+                    instruction.textContent = '❌ Calibration thất bại!';
+                }
+
+                overlay.style.display = 'none';
+                this.isCalibrating = false;
+                this.currentPhase = null;
+                this.updateVisualGuide('neutral');
+
+                return this.calibration;
+            }
+
+            updateVisualGuide(phase) {
+                const leftArrow = document.getElementById('left-arrow');
+                const rightArrow = document.getElementById('right-arrow');
+                const guideHand = document.getElementById('guide-hand');
+
+                leftArrow?.classList.remove('active');
+                rightArrow?.classList.remove('active');
+                guideHand?.classList.remove('tilt-left', 'tilt-right');
+
+                if (phase === 'left') {
+                    leftArrow?.classList.add('active');
+                    guideHand?.classList.add('tilt-left');
+                } else if (phase === 'right') {
+                    rightArrow?.classList.add('active');
+                    guideHand?.classList.add('tilt-right');
+                }
+            }
+
+            async waitForHand(webcamElement, hands, handStatus, handStatusText, timeout) {
+                const startTime = Date.now();
+                return new Promise(resolve => {
+                    const checkLoop = async () => {
+                        if (!this.isCalibrating) { resolve(); return; }
+
+                        try { await hands.send({ image: webcamElement }); } catch (e) { }
+
+                        // Update UI based on hand detection
+                        if (this.handDetected) {
+                            handStatus?.classList.add('detected');
+                            if (handStatusText) handStatusText.textContent = '✅ Tay đã phát hiện!';
+                            resolve();
+                            return;
+                        } else {
+                            handStatus?.classList.remove('detected');
+                            if (handStatusText) handStatusText.textContent = '🔍 Đang tìm tay...';
+                        }
+
+                        if (Date.now() - startTime >= timeout) {
+                            resolve();
+                        } else {
+                            setTimeout(checkLoop, 100);
+                        }
+                    };
+                    checkLoop();
+                });
+            }
+
+            async countdown(progressBar, duration) {
+                const startTime = Date.now();
+                return new Promise(resolve => {
+                    const interval = setInterval(() => {
+                        const elapsed = Date.now() - startTime;
+                        const percent = (elapsed / duration * 100);
+                        progressBar.style.width = percent + '%';
+
+                        if (elapsed >= duration) {
+                            clearInterval(interval);
+                            resolve();
+                        }
+                    }, 50);
+                });
+            }
+
+            async measurePhase(webcamElement, hands, progressBar, handStatus, handStatusText, duration) {
+                const startTime = Date.now();
+
+                return new Promise(resolve => {
+                    const measureLoop = async () => {
+                        if (!this.isCalibrating) {
+                            resolve();
+                            return;
+                        }
+
+                        const elapsed = Date.now() - startTime;
+                        progressBar.style.width = (elapsed / duration * 100) + '%';
+
+                        // Send frame to MediaPipe
+                        try {
+                            await hands.send({ image: webcamElement });
+                        } catch (e) { }
+
+                        // Update hand status UI
+                        if (this.handDetected) {
+                            handStatus?.classList.add('detected');
+                            if (handStatusText) handStatusText.textContent = '✅ Đang đo...';
+                            this.handLostTime = 0;
+                        } else {
+                            handStatus?.classList.remove('detected');
+                            this.handLostTime++;
+                            if (this.handLostTime > 5) { // ~400ms without hand
+                                if (handStatusText) handStatusText.textContent = '⚠️ Tay mất! Giữ tay trong camera';
+                            }
+                        }
+
+                        if (elapsed >= duration) {
+                            resolve();
+                        } else {
+                            setTimeout(measureLoop, 80); // ~12fps during calibration
+                        }
+                    };
+
+                    measureLoop();
+                });
+            }
+
+            feedLandmarks(landmarks) {
+                // Update hand detection state
+                this.handDetected = !!(landmarks && landmarks.length >= 21);
+
+                if (!this.isCalibrating || !landmarks || !this.currentPhase) return;
+
+                const wrist = landmarks[0], middleBase = landmarks[9];
+                const tilt = middleBase.x - wrist.x;
+
+                // Store in correct phase (only when hand detected)
+                if (this.handDetected) {
+                    if (this.currentPhase === 'left') {
+                        this.measurements.left.push(tilt);
+                    } else if (this.currentPhase === 'right') {
+                        this.measurements.right.push(tilt);
+                    }
+                }
+            }
+
+            normalizeSteeringAngle(rawAngle) {
+                const maxAngle = this.calibration.maxSteeringAngle || this.defaults.maxSteeringAngle;
+                return Math.max(-1, Math.min(1, rawAngle / maxAngle));
+            }
+
+            save() {
+                try { localStorage.setItem(this.storageKey, JSON.stringify(this.calibration)); } catch (e) { }
+            }
+
+            load() {
+                try {
+                    const saved = localStorage.getItem(this.storageKey);
+                    return saved ? { ...this.defaults, ...JSON.parse(saved) } : { ...this.defaults };
+                } catch (e) { return { ...this.defaults }; }
+            }
+
+            reset() {
+                this.calibration = { ...this.defaults };
+                try { localStorage.removeItem(this.storageKey); } catch (e) { }
+            }
+
+            getStatus() {
+                if (!this.calibration.calibrated) return 'Not calibrated';
+                const age = Math.floor((Date.now() - this.calibration.timestamp) / 60000);
+                return `Calibrated ${age}m ago (${this.calibration.sampleCount} samples)`;
+            }
+        }
+
+        // ==================== CALIBRATION INSTANCE ====================
+        const calibrationManager = new CalibrationManager();
+
+        // ==================== GAME CONFIGURATION ====================
+        const CONFIG = {
+            difficulty: {
+                easy: { baseSpeed: 0.3, maxSpeed: 0.8, obstacleFrequency: 0.005, scoreMultiplier: 1, maxObstacles: 3 },
+                medium: { baseSpeed: 0.5, maxSpeed: 1.2, obstacleFrequency: 0.008, scoreMultiplier: 1.5, maxObstacles: 4 },
+                hard: { baseSpeed: 0.7, maxSpeed: 1.5, obstacleFrequency: 0.012, scoreMultiplier: 2, maxObstacles: 5 }
+            },
+            track: { width: 12, length: 200, laneCount: 3 },
+            car: { width: 1.5, height: 0.8, length: 2.5 }
+        };
+
+        // ==================== SIGNAL FILTERS (Initialized) ====================
+        // Racing: Cần phản hồi nhanh, minCutoff cao hơn, beta cao hơn
+        const steeringFilter = new OneEuroFilter(30, 1.0, 0.02, 1.0);  // minCutoff=1.0, beta=0.02
+        const steeringPredictor = new LatencyPredictor(60);  // 60ms latency compensation
+
+        // ==================== GAME STATE ====================
+        let gameState = {
+            isPlaying: false, score: 0, speed: 0, targetSpeed: 0,
+            carPosition: 0, targetCarPosition: 0, difficulty: 'easy',
+            highScore: parseInt(localStorage.getItem('handRacingHighScore') || '0'),
+            audioEnabled: true
+        };
+
+        // ==================== THREE.JS SETUP ====================
+        let scene, camera, renderer, car;
+        let obstacles = [], roadLines = [];
+        let clock = new THREE.Clock();
+
+        // ==================== MEDIAPIPE SETUP ====================
+        let hands;
+        let gestureData = { steering: 0, isAccelerating: false, isBraking: false, handsDetected: false };
+
+        // ==================== AUDIO ====================
+        let audioContext, engineOscillator, engineGain;
+
+        // ==================== DOM ELEMENTS ====================
+        const loadingScreen = document.getElementById('loading-screen');
+        const loadingBar = document.getElementById('loading-bar');
+        const loadingText = document.getElementById('loading-text');
+        const startMenu = document.getElementById('start-menu');
+        const gameContainer = document.getElementById('game-container');
+        const hud = document.getElementById('hud');
+        const webcamContainer = document.getElementById('webcam-container');
+        const webcamElement = document.getElementById('webcam');
+        const gestureIndicator = document.getElementById('gesture-indicator');
+        const gameOverScreen = document.getElementById('game-over');
+        const audioToggle = document.getElementById('audio-toggle');
+
+        // ==================== INITIALIZATION ====================
+        async function init() {
+            try {
+                updateLoading(10, 'Loading Three.js...');
+                initThreeJS();
+                updateLoading(40, 'Loading MediaPipe...');
+                await initMediaPipe();
+                updateLoading(70, 'Setting up audio...');
+                initAudio();
+                updateLoading(90, 'Preparing game...');
+                setupEventListeners();
+                updateLoading(100, 'Ready!');
+                setTimeout(() => {
+                    loadingScreen.classList.add('hidden');
+                    startMenu.style.display = 'flex';
+                    document.getElementById('high-score-display').textContent = `🏆 High Score: ${gameState.highScore}`;
+                }, 500);
+            } catch (error) {
+                console.error('Initialization error:', error);
+                loadingText.textContent = 'Error loading game. Please refresh.';
+            }
+        }
+
+        function updateLoading(percent, text) {
+            loadingBar.style.width = percent + '%';
+            loadingText.textContent = text;
+        }
+
+        // ==================== THREE.JS ====================
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a1a);
+            scene.fog = new THREE.Fog(0x0a0a1a, 30, 100);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+            camera.position.set(0, 3, 8);
+            camera.lookAt(0, 0, -20);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+            gameContainer.appendChild(renderer.domElement);
+
+            // Lighting
+            scene.add(new THREE.AmbientLight(0x404080, 0.5));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            dirLight.position.set(10, 20, 10);
+            scene.add(dirLight);
+
+            const neon1 = new THREE.PointLight(0xff6b6b, 1, 50);
+            neon1.position.set(-10, 5, -20);
+            scene.add(neon1);
+
+            const neon2 = new THREE.PointLight(0x48dbfb, 1, 50);
+            neon2.position.set(10, 5, -20);
+            scene.add(neon2);
+
+            createTrack();
+            createCar();
+            createStars();
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function createTrack() {
+            const roadGeo = new THREE.PlaneGeometry(CONFIG.track.width, CONFIG.track.length);
+            const roadMat = new THREE.MeshStandardMaterial({ color: 0x2d2d2d, roughness: 0.8 });
+            const road = new THREE.Mesh(roadGeo, roadMat);
+            road.rotation.x = -Math.PI / 2;
+            road.position.z = -CONFIG.track.length / 2;
+            scene.add(road);
+
+            const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const lineGeo = new THREE.PlaneGeometry(0.2, 4);
+
+            for (let z = 0; z > -CONFIG.track.length; z -= 8) {
+                const leftLine = new THREE.Mesh(lineGeo, lineMat);
+                leftLine.rotation.x = -Math.PI / 2;
+                leftLine.position.set(-2, 0.01, z);
+                scene.add(leftLine);
+                roadLines.push(leftLine);
+
+                const rightLine = new THREE.Mesh(lineGeo, lineMat);
+                rightLine.rotation.x = -Math.PI / 2;
+                rightLine.position.set(2, 0.01, z);
+                scene.add(rightLine);
+                roadLines.push(rightLine);
+            }
+
+            const edgeMat = new THREE.MeshBasicMaterial({ color: 0xff6b6b });
+            const edgeGeo = new THREE.BoxGeometry(0.3, 0.3, CONFIG.track.length);
+            const leftEdge = new THREE.Mesh(edgeGeo, edgeMat);
+            leftEdge.position.set(-CONFIG.track.width / 2, 0.15, -CONFIG.track.length / 2);
+            scene.add(leftEdge);
+            const rightEdge = leftEdge.clone();
+            rightEdge.position.x = CONFIG.track.width / 2;
+            scene.add(rightEdge);
+        }
+
+        function createCar() {
+            car = new THREE.Group();
+            const bodyGeo = new THREE.BoxGeometry(CONFIG.car.width, CONFIG.car.height, CONFIG.car.length);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xfeca57, metalness: 0.6, roughness: 0.3 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = CONFIG.car.height / 2 + 0.2;
+            car.add(body);
+
+            const roofGeo = new THREE.BoxGeometry(CONFIG.car.width * 0.8, CONFIG.car.height * 0.5, CONFIG.car.length * 0.5);
+            const roof = new THREE.Mesh(roofGeo, bodyMat);
+            roof.position.y = CONFIG.car.height + 0.4;
+            roof.position.z = -0.2;
+            car.add(roof);
+
+            const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 16);
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            [[-0.7, 0.3, 0.8], [0.7, 0.3, 0.8], [-0.7, 0.3, -0.8], [0.7, 0.3, -0.8]].forEach(pos => {
+                const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(...pos);
+                car.add(wheel);
+            });
+
+            const headGeo = new THREE.SphereGeometry(0.15, 8, 8);
+            const headMat = new THREE.MeshBasicMaterial({ color: 0xffffaa });
+            const leftHead = new THREE.Mesh(headGeo, headMat);
+            leftHead.position.set(-0.5, 0.6, -CONFIG.car.length / 2);
+            car.add(leftHead);
+            const rightHead = leftHead.clone();
+            rightHead.position.x = 0.5;
+            car.add(rightHead);
+
+            scene.add(car);
+        }
+
+        function createStars() {
+            const starGeo = new THREE.BufferGeometry();
+            const positions = new Float32Array(300 * 3);
+            for (let i = 0; i < 300; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 200;
+                positions[i * 3 + 1] = Math.random() * 50 + 10;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 200 - 50;
+            }
+            starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5, transparent: true, opacity: 0.8 });
+            scene.add(new THREE.Points(starGeo, starMat));
+        }
+
+        function createObstacle() {
+            const lanePositions = [-3, 0, 3];
+            const spawnZ = -80;
+            for (const obs of obstacles) {
+                if (Math.abs(obs.position.z - spawnZ) < 25) return;
+            }
+            const lane = lanePositions[Math.floor(Math.random() * lanePositions.length)];
+            const obsGeo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+            const obsMat = new THREE.MeshStandardMaterial({ color: 0xff4444, emissive: 0xff0000, emissiveIntensity: 0.3 });
+            const obstacle = new THREE.Mesh(obsGeo, obsMat);
+            obstacle.position.set(lane, 0.6, spawnZ);
+            scene.add(obstacle);
+            obstacles.push(obstacle);
+        }
+
+        // ==================== MEDIAPIPE ====================
+        async function initMediaPipe() {
+            return new Promise((resolve, reject) => {
+                try {
+                    hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+                    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+                    hands.onResults(onHandResults);
+                    resolve();
+                } catch (error) { reject(error); }
+            });
+        }
+
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
+                webcamElement.srcObject = stream;
+                await new Promise(r => { webcamElement.onloadedmetadata = r; });
+                processFrame();
+            } catch (error) {
+                console.error('Camera error:', error);
+                gestureIndicator.textContent = 'Camera Error';
+            }
+        }
+
+        let lastProcessTime = 0;
+        async function processFrame() {
+            if (!gameState.isPlaying) return;
+            const now = performance.now();
+            if (now - lastProcessTime >= 100) {
+                lastProcessTime = now;
+                try { await hands.send({ image: webcamElement }); } catch (e) { }
+            }
+            requestAnimationFrame(processFrame);
+        }
+
+        function onHandResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                gestureData.handsDetected = true;
+                gestureData.lastHandDetectTime = performance.now(); // Update last detected time
+
+                let totalSteering = 0;
+                let isOpen = false, isClosed = false;
+
+                results.multiHandLandmarks.forEach((landmarks) => {
+                    // Feed to calibration if calibrating
+                    if (calibrationManager.isCalibrating) {
+                        calibrationManager.feedLandmarks(landmarks);
+                    }
+
+                    const wrist = landmarks[0], middleBase = landmarks[9];
+                    const handCenter = (wrist.x + middleBase.x) / 2;
+                    const tilt = middleBase.x - wrist.x;
+                    totalSteering -= (handCenter - 0.5) * 2 + tilt * 3;
+
+                    let openFingers = 0;
+                    [8, 12, 16, 20].forEach((tipIdx, i) => {
+                        if (landmarks[tipIdx].y < landmarks[[5, 9, 13, 17][i]].y) openFingers++;
+                    });
+                    if (openFingers >= 3) isOpen = true;
+                    if (openFingers <= 1) isClosed = true;
+                });
+
+                // RAW steering calculation
+                let rawSteering = totalSteering / results.multiHandLandmarks.length;
+
+                // CALIBRATION: Use personalized max steering if calibrated
+                if (calibrationManager.calibration.calibrated) {
+                    rawSteering = calibrationManager.normalizeSteeringAngle(rawSteering);
+                } else {
+                    rawSteering = Math.max(-1, Math.min(1, rawSteering));
+                }
+
+                const timestamp = performance.now();
+
+                // ONE EURO FILTER: Smooth steering with adaptive cutoff
+                const filteredSteering = steeringFilter.filter(rawSteering, timestamp);
+
+                // LATENCY COMPENSATION: Predict future position based on velocity
+                const steeringVelocity = steeringFilter.getVelocity();
+                gestureData.steering = steeringPredictor.predict(filteredSteering, steeringVelocity, timestamp);
+
+                gestureData.isAccelerating = isOpen && !isClosed;
+                gestureData.isBraking = isClosed;
+                gestureIndicator.textContent = gestureData.isBraking ? '✊ Braking' : gestureData.isAccelerating ? '✋ Accelerating' : '🖐️ Coasting';
+            } else {
+                // Stabilizer: Keep last known state for 500ms
+                const now = performance.now();
+                if (!gestureData.lastHandDetectTime) gestureData.lastHandDetectTime = 0;
+
+                if (now - gestureData.lastHandDetectTime > 500) {
+                    gestureData.handsDetected = false;
+                    gestureIndicator.textContent = '❓ No hands';
+                    // Gently reset controls if hands lost for too long
+                    gestureData.isAccelerating = false;
+                    gestureData.isBraking = false;
+                }
+            }
+        }
+
+        // ==================== AUDIO ====================
+        function initAudio() {
+            try { audioContext = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { }
+        }
+
+        function startEngineSound() {
+            if (!audioContext || !gameState.audioEnabled) return;
+            try {
+                if (audioContext.state === 'suspended') audioContext.resume();
+                engineOscillator = audioContext.createOscillator();
+                engineGain = audioContext.createGain();
+                engineOscillator.type = 'sawtooth';
+                engineOscillator.frequency.setValueAtTime(80, audioContext.currentTime);
+                engineGain.gain.setValueAtTime(0.05, audioContext.currentTime);
+                engineOscillator.connect(engineGain);
+                engineGain.connect(audioContext.destination);
+                engineOscillator.start();
+            } catch (e) { }
+        }
+
+        function stopEngineSound() {
+            try { if (engineOscillator) { engineOscillator.stop(); engineOscillator = null; } } catch (e) { }
+        }
+
+        function playCollisionSound() {
+            if (!audioContext || !gameState.audioEnabled) return;
+            try {
+                const osc = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(100, audioContext.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.2, audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                osc.connect(gain);
+                gain.connect(audioContext.destination);
+                osc.start();
+                osc.stop(audioContext.currentTime + 0.3);
+            } catch (e) { }
+        }
+
+        // ==================== GAME LOGIC ====================
+        function startGame() {
+            gameState.isPlaying = true;
+            gameState.score = 0;
+            gameState.speed = 0;
+            gameState.carPosition = 0;
+            startMenu.style.display = 'none';
+            hud.style.display = 'flex';
+            webcamContainer.style.display = 'block';
+            audioToggle.style.display = 'block';
+            gameOverScreen.style.display = 'none';
+            obstacles.forEach(obs => scene.remove(obs));
+            obstacles = [];
+            car.position.x = 0;
+            startCamera();
+            startEngineSound();
+            animate();
+        }
+
+        function endGame() {
+            gameState.isPlaying = false;
+            stopEngineSound();
+            const isNewHighScore = gameState.score > gameState.highScore;
+            if (isNewHighScore) {
+                gameState.highScore = gameState.score;
+                localStorage.setItem('handRacingHighScore', gameState.score.toString());
+            }
+            document.getElementById('final-score').textContent = Math.floor(gameState.score);
+            document.getElementById('new-high-score').style.display = isNewHighScore ? 'block' : 'none';
+            gameOverScreen.style.display = 'flex';
+            if (webcamElement.srcObject) webcamElement.srcObject.getTracks().forEach(track => track.stop());
+        }
+
+        function animate() {
+            if (!gameState.isPlaying) return;
+            requestAnimationFrame(animate);
+
+            const diffSettings = CONFIG.difficulty[gameState.difficulty];
+            if (gestureData.isAccelerating) gameState.targetSpeed = diffSettings.maxSpeed;
+            else if (gestureData.isBraking) gameState.targetSpeed = diffSettings.baseSpeed * 0.3;
+            else gameState.targetSpeed = diffSettings.baseSpeed;
+            gameState.speed += (gameState.targetSpeed - gameState.speed) * 0.05;
+
+            gameState.targetCarPosition = gestureData.steering * (CONFIG.track.width / 2 - 1);
+            gameState.carPosition += (gameState.targetCarPosition - gameState.carPosition) * 0.1;
+            car.position.x = gameState.carPosition;
+            car.rotation.z = -gestureData.steering * 0.1;
+
+            roadLines.forEach(line => {
+                line.position.z += gameState.speed;
+                if (line.position.z > 10) line.position.z -= CONFIG.track.length;
+            });
+
+            if (obstacles.length < (diffSettings.maxObstacles || 4) && Math.random() < diffSettings.obstacleFrequency) {
+                createObstacle();
+            }
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.position.z += gameState.speed;
+                obs.rotation.y += 0.02;
+
+                if (obs.position.z > 15) {
+                    scene.remove(obs);
+                    obstacles.splice(i, 1);
+                    continue;
+                }
+
+                const carBounds = {
+                    left: car.position.x - CONFIG.car.width / 2,
+                    right: car.position.x + CONFIG.car.width / 2,
+                    front: -CONFIG.car.length / 2,
+                    back: CONFIG.car.length / 2
+                };
+                const obsBounds = { left: obs.position.x - 0.6, right: obs.position.x + 0.6, front: obs.position.z - 0.6, back: obs.position.z + 0.6 };
+
+                if (carBounds.right > obsBounds.left && carBounds.left < obsBounds.right && carBounds.back > obsBounds.front && carBounds.front < obsBounds.back) {
+                    playCollisionSound();
+                    scene.remove(obs);
+                    obstacles.splice(i, 1);
+                    endGame();
+                    return;
+                }
+            }
+
+            gameState.score += gameState.speed * diffSettings.scoreMultiplier * 0.5;
+            document.getElementById('score-value').textContent = Math.floor(gameState.score);
+            document.getElementById('speed-value').textContent = Math.floor(gameState.speed * 100) + ' km/h';
+
+            if (engineOscillator) {
+                try { engineOscillator.frequency.setValueAtTime(80 + gameState.speed * 150, audioContext.currentTime); } catch (e) { }
+            }
+            camera.position.x = Math.sin(Date.now() * 0.01) * gameState.speed * 0.1;
+            renderer.render(scene, camera);
+        }
+
+        // ==================== EVENT LISTENERS ====================
+        function setupEventListeners() {
+            document.querySelectorAll('.difficulty-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.difficulty-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    gameState.difficulty = btn.dataset.difficulty;
+                });
+            });
+
+            document.getElementById('start-btn').addEventListener('click', startGame);
+            document.getElementById('retry-btn').addEventListener('click', startGame);
+            document.getElementById('menu-btn').addEventListener('click', () => {
+                gameOverScreen.style.display = 'none';
+                startMenu.style.display = 'flex';
+                hud.style.display = 'none';
+                webcamContainer.style.display = 'none';
+                audioToggle.style.display = 'none';
+                document.getElementById('high-score-display').textContent = `🏆 High Score: ${gameState.highScore}`;
+            });
+
+            // CALIBRATION BUTTON
+            document.getElementById('calibrate-btn').addEventListener('click', async () => {
+                try {
+                    // Start camera first
+                    webcamContainer.style.display = 'block';
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
+                    webcamElement.srcObject = stream;
+                    await new Promise(r => { webcamElement.onloadedmetadata = r; });
+
+                    // Initialize hands if needed
+                    if (!hands) {
+                        hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+                        hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+                        hands.onResults(onHandResults);
+                    }
+
+                    // Run calibration (measurePhase handles MediaPipe internally)
+                    await calibrationManager.runCalibration(webcamElement, hands);
+
+                    // Hide webcam after calibration
+                    webcamContainer.style.display = 'none';
+
+                    console.log('Calibration complete:', calibrationManager.calibration);
+                } catch (error) {
+                    console.error('Calibration error:', error);
+                    document.getElementById('calibration-overlay').style.display = 'none';
+                    webcamContainer.style.display = 'none';
+                }
+            });
+
+            // SKIP CALIBRATION
+            document.getElementById('skip-calibration').addEventListener('click', () => {
+                calibrationManager.isCalibrating = false;
+                document.getElementById('calibration-overlay').style.display = 'none';
+                document.getElementById('webcam-container').style.display = 'none';
+            });
+
+            audioToggle.addEventListener('click', () => {
+                gameState.audioEnabled = !gameState.audioEnabled;
+                audioToggle.textContent = gameState.audioEnabled ? '🔊' : '🔇';
+                if (!gameState.audioEnabled) stopEngineSound();
+                else if (gameState.isPlaying) startEngineSound();
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (!gameState.isPlaying) return;
+                switch (e.key) {
+                    case 'ArrowLeft': case 'a': gestureData.steering = -1; break;
+                    case 'ArrowRight': case 'd': gestureData.steering = 1; break;
+                    case 'ArrowUp': case 'w': gestureData.isAccelerating = true; gestureData.isBraking = false; break;
+                    case 'ArrowDown': case 's': gestureData.isBraking = true; gestureData.isAccelerating = false; break;
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                if (!gameState.isPlaying) return;
+                switch (e.key) {
+                    case 'ArrowLeft': case 'a': case 'ArrowRight': case 'd': gestureData.steering = 0; break;
+                    case 'ArrowUp': case 'w': gestureData.isAccelerating = false; break;
+                    case 'ArrowDown': case 's': gestureData.isBraking = false; break;
+                }
+            });
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

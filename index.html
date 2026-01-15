@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎮 Gesture Games Hub - Hand Controlled Games</title>
+    <meta name="description" content="A collection of gesture-controlled games using MediaPipe and Three.js. Play racing and puzzle games with your hands!">
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/hub.css">
+</head>
+
+<body>
+    <div class="hub-container">
+        <!-- Header -->
+        <header class="hub-header">
+            <h1 class="hub-title gradient-text">🎮 Gesture Games Hub</h1>
+            <p class="hub-subtitle">
+                Control games with your hands using AI-powered gesture recognition. 
+                Choose a game below to start playing!
+            </p>
+        </header>
+
+        <!-- Games Grid -->
+        <main class="games-grid">
+            <!-- Racing Game Card -->
+            <a href="games/racing.html" class="game-card racing">
+                <div class="game-icon">🏎️</div>
+                <div class="game-info">
+                    <h2 class="game-title">Hand Racing</h2>
+                    <p class="game-description">
+                        Race through a neon-lit track by controlling your car with hand gestures. 
+                        Open palm to accelerate, close fist to brake, and tilt to steer!
+                    </p>
+                </div>
+                <div class="game-features">
+                    <span class="feature-tag">🖐️ Gesture Control</span>
+                    <span class="feature-tag">⌨️ Keyboard Support</span>
+                    <span class="feature-tag">🏆 High Score</span>
+                    <span class="feature-tag">🎵 Sound Effects</span>
+                </div>
+                <div class="play-btn">
+                    <span>Play Now</span>
+                    <span class="arrow">→</span>
+                </div>
+            </a>
+
+            <!-- Tower of Hanoi Card -->
+            <a href="games/hanoi.html" class="game-card hanoi">
+                <div class="game-icon">🗼</div>
+                <div class="game-info">
+                    <h2 class="game-title">Tower of Hanoi</h2>
+                    <p class="game-description">
+                        Solve the classic Tower of Hanoi puzzle in stunning 3D. 
+                        Use pinch gestures to grab and move disks, or play with mouse controls.
+                    </p>
+                </div>
+                <div class="game-features">
+                    <span class="feature-tag">🤏 Pinch Gesture</span>
+                    <span class="feature-tag">🖱️ Mouse Control</span>
+                    <span class="feature-tag">🎯 3-7 Disks</span>
+                    <span class="feature-tag">⏱️ Timer</span>
+                </div>
+                <div class="play-btn">
+                    <span>Play Now</span>
+                    <span class="arrow">→</span>
+                </div>
+            </a>
+        </main>
+
+        <!-- Footer -->
+        <footer class="hub-footer">
+            <p>Built with ❤️ using Three.js & MediaPipe</p>
+            <div class="tech-stack">
+                <span class="tech-item">🎨 Three.js</span>
+                <span class="tech-item">🤖 MediaPipe</span>
+                <span class="tech-item">🎵 Web Audio</span>
+            </div>
+        </footer>
+    </div>
+</body>
+
+</html>
