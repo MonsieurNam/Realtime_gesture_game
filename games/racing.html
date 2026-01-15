@@ -831,10 +831,10 @@
                 if (Math.abs(obs.position.z - spawnZ) < 25) return;
             }
             const lane = lanePositions[Math.floor(Math.random() * lanePositions.length)];
-            const obsGeo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+            const obsGeo = new THREE.BoxGeometry(2.0, 2.0, 2.0);
             const obsMat = new THREE.MeshStandardMaterial({ color: 0xff4444, emissive: 0xff0000, emissiveIntensity: 0.3 });
             const obstacle = new THREE.Mesh(obsGeo, obsMat);
-            obstacle.position.set(lane, 0.6, spawnZ);
+            obstacle.position.set(lane, 1.0, spawnZ);
             scene.add(obstacle);
             obstacles.push(obstacle);
         }
@@ -1053,7 +1053,7 @@
                     front: -CONFIG.car.length / 2,
                     back: CONFIG.car.length / 2
                 };
-                const obsBounds = { left: obs.position.x - 0.6, right: obs.position.x + 0.6, front: obs.position.z - 0.6, back: obs.position.z + 0.6 };
+                const obsBounds = { left: obs.position.x - 1.0, right: obs.position.x + 1.0, front: obs.position.z - 1.0, back: obs.position.z + 1.0 };
 
                 if (carBounds.right > obsBounds.left && carBounds.left < obsBounds.right && carBounds.back > obsBounds.front && carBounds.front < obsBounds.back) {
                     playCollisionSound();

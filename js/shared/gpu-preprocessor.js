@@ -98,15 +98,20 @@ class GpuPreprocessor {
      * @param {HTMLVideoElement|HTMLCanvasElement|ImageBitmap} source 
      * @returns {Promise<Uint8Array>} Raw pixel data (RGBA)
      */
-    async process(source) {
+    getOutputTexture() {
+        return this.outputTexture;
+    }
+
+    /**
+     * Executes the shader pipeline without reading back to CPU
+     */
+    execute(source) {
         const width = source.videoWidth || source.width;
         const height = source.videoHeight || source.height;
         this.ensureTextures(width, height);
 
-        // Import external texture (Video/Camera) - efficient 0-copy import
         const inputTexture = this.device.importExternalTexture({ source: source });
 
-        // Bind Group
         const bindGroup = this.device.createBindGroup({
             layout: this.pipeline.getBindGroupLayout(0),
             entries: [
@@ -115,7 +120,6 @@ class GpuPreprocessor {
             ]
         });
 
-        // Command Encoder
         const commandEncoder = this.device.createCommandEncoder();
         const passEncoder = commandEncoder.beginComputePass();
         passEncoder.setPipeline(this.pipeline);
@@ -123,20 +127,32 @@ class GpuPreprocessor {
         passEncoder.dispatchWorkgroups(Math.ceil(width / 16), Math.ceil(height / 16));
         passEncoder.end();
 
-        // Copy texture to buffer for readback
+        this.device.queue.submit([commandEncoder.finish()]);
+    }
+
+    /**
+     * Processes a video frame or canvas on GPU and reads back to CPU
+     * @param {HTMLVideoElement|HTMLCanvasElement|ImageBitmap} source 
+     * @returns {Promise<Uint8Array>} Raw pixel data (RGBA)
+     */
+    async process(source) {
+        this.execute(source);
+
+        // Buffer readback logic
+        const width = source.videoWidth || source.width;
+        const height = source.videoHeight || source.height;
+
+        const commandEncoder = this.device.createCommandEncoder();
         commandEncoder.copyTextureToBuffer(
             { texture: this.outputTexture },
             { buffer: this.gpuReadBuffer, bytesPerRow: width * 4 },
             [width, height]
         );
-
-        // Submit commands
         this.device.queue.submit([commandEncoder.finish()]);
 
-        // Map buffer to read data (Async logic needed here)
         await this.gpuReadBuffer.mapAsync(GPUMapMode.READ);
         const arrayBuffer = this.gpuReadBuffer.getMappedRange();
-        const outputData = new Uint8Array(arrayBuffer.slice(0)); // Copy data
+        const outputData = new Uint8Array(arrayBuffer.slice(0));
         this.gpuReadBuffer.unmap();
 
         return outputData;
