@@ -707,27 +707,71 @@
             return null;
         }
 
+        function getInteractionTarget() {
+            // Find the closest top disk within range
+            let closestDisk = null;
+            let minDist = Infinity;
+            const INTERACTION_RADIUS = 3.5; // Radius of influence for "magnetic" grab
+
+            // Check top disk of each rod
+            for (let i = 0; i < 3; i++) {
+                if (gameState.rods[i].length > 0) {
+                    const topDiskIndex = gameState.rods[i][gameState.rods[i].length - 1];
+                    const disk = gameState.disks[topDiskIndex];
+
+                    // Calculate distance in XZ plane (ignoring height difference for easier grabbing)
+                    const dx = cursor3D.position.x - disk.position.x;
+                    const dz = cursor3D.position.z - disk.position.z;
+                    const dist = Math.sqrt(dx * dx + dz * dz);
+
+                    if (dist < INTERACTION_RADIUS && dist < minDist) {
+                        minDist = dist;
+                        closestDisk = disk;
+                    }
+                }
+            }
+            return closestDisk;
+        }
+
         function updateHoveredDisk() {
             if (gameState.isDragging) return;
-            const intersects = getIntersectedDisks();
 
-            if (hoveredDisk && hoveredDisk !== gameState.selectedDisk) {
-                hoveredDisk.material.emissiveIntensity = 0.1;
+            // Prioritize gesture magnetic target if in gesture mode, else mouse hover
+            let targetDisk = null;
+
+            if (gameState.gestureMode) {
+                targetDisk = getInteractionTarget();
+            } else {
+                const intersects = getIntersectedDisks();
+                if (intersects.length > 0) {
+                    const disk = intersects[0].object;
+                    const diskIndex = disk.userData.diskIndex;
+                    const rodIndex = getDiskRod(diskIndex);
+                    const topDiskIndex = gameState.rods[rodIndex][gameState.rods[rodIndex].length - 1];
+                    if (diskIndex === topDiskIndex) targetDisk = disk;
+                }
             }
 
-            if (intersects.length > 0) {
-                const disk = intersects[0].object;
-                const diskIndex = disk.userData.diskIndex;
-                const rodIndex = getDiskRod(diskIndex);
-                const topDiskIndex = gameState.rods[rodIndex][gameState.rods[rodIndex].length - 1];
+            // Reset previous hover
+            if (hoveredDisk && hoveredDisk !== gameState.selectedDisk && hoveredDisk !== targetDisk) {
+                hoveredDisk.material.emissiveIntensity = 0.1;
+                // Scale back down if it was scaled up by hover
+                if (!gameState.gestureMode) hoveredDisk.scale.set(1, 1, 1);
+            }
 
-                if (diskIndex === topDiskIndex) {
-                    hoveredDisk = disk;
-                    disk.material.emissiveIntensity = 0.3;
-                    document.body.style.cursor = 'grab';
-                } else {
-                    hoveredDisk = null;
-                    document.body.style.cursor = 'default';
+            // Apply new hover
+            if (targetDisk) {
+                hoveredDisk = targetDisk;
+                targetDisk.material.emissiveIntensity = 0.4;
+                // Subtle scale pulse to indicate interactivity
+                if (!gameState.selectedDisk) {
+                    // targetDisk.scale.set(1.05, 1.05, 1.05); // Optional: cause visual glitch if conflict with drag?
+                }
+                document.body.style.cursor = 'grab';
+
+                // Show indicator for magnetic target
+                if (gameState.gestureMode) {
+                    // Optional: Draw a line or highlight ring
                 }
             } else {
                 hoveredDisk = null;
@@ -919,9 +963,17 @@
             if (gameState.animations.length > 0) return;
 
             if (isPinching && !gameState.lastPinchState) {
-                const intersects = getIntersectedDisks();
-                if (intersects.length > 0 && !gameState.isDragging) {
-                    const disk = intersects[0].object;
+                // Modified to use magnetic interaction target
+                let targetDisk = null;
+                if (gameState.gestureMode) {
+                    targetDisk = getInteractionTarget();
+                } else {
+                    const intersects = getIntersectedDisks();
+                    if (intersects.length > 0) targetDisk = intersects[0].object;
+                }
+
+                if (targetDisk && !gameState.isDragging) {
+                    const disk = targetDisk;
                     const diskIndex = disk.userData.diskIndex;
                     const rodIndex = getDiskRod(diskIndex);
                     const topDiskIndex = gameState.rods[rodIndex][gameState.rods[rodIndex].length - 1];
@@ -962,8 +1014,9 @@
 
             if (isPinching && gameState.isDragging && gameState.selectedDisk) {
                 const disk = gameState.selectedDisk;
-                disk.position.x += (gameState.targetDiskPosition.x - disk.position.x) * gameState.DISK_FOLLOW_SPEED;
-                disk.position.z += (gameState.targetDiskPosition.z - disk.position.z) * gameState.DISK_FOLLOW_SPEED;
+                // Add smoothing to dragged disk movement
+                disk.position.x += (gameState.targetDiskPosition.x - disk.position.x) * 0.3;
+                disk.position.z += (gameState.targetDiskPosition.z - disk.position.z) * 0.3;
                 disk.position.y = CONFIG.liftHeight;
             }
         }

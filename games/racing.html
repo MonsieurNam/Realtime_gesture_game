@@ -831,10 +831,10 @@
                 if (Math.abs(obs.position.z - spawnZ) < 25) return;
             }
             const lane = lanePositions[Math.floor(Math.random() * lanePositions.length)];
-            const obsGeo = new THREE.BoxGeometry(2.0, 2.0, 2.0);
+            const obsGeo = new THREE.BoxGeometry(3.8, 2.5, 2.0); // WIDER obstacles to prevent wall exploit
             const obsMat = new THREE.MeshStandardMaterial({ color: 0xff4444, emissive: 0xff0000, emissiveIntensity: 0.3 });
             const obstacle = new THREE.Mesh(obsGeo, obsMat);
-            obstacle.position.set(lane, 1.0, spawnZ);
+            obstacle.position.set(lane, 1.25, spawnZ); // Adjusted Y for 2.5 height
             scene.add(obstacle);
             obstacles.push(obstacle);
         }
@@ -1009,7 +1009,8 @@
             document.getElementById('final-score').textContent = Math.floor(gameState.score);
             document.getElementById('new-high-score').style.display = isNewHighScore ? 'block' : 'none';
             gameOverScreen.style.display = 'flex';
-            if (webcamElement.srcObject) webcamElement.srcObject.getTracks().forEach(track => track.stop());
+            // Don't stop tracks to avoid permission re-prompt
+            // if (webcamElement.srcObject) webcamElement.srcObject.getTracks().forEach(track => track.stop());
         }
 
         function animate() {
@@ -1053,7 +1054,7 @@
                     front: -CONFIG.car.length / 2,
                     back: CONFIG.car.length / 2
                 };
-                const obsBounds = { left: obs.position.x - 1.0, right: obs.position.x + 1.0, front: obs.position.z - 1.0, back: obs.position.z + 1.0 };
+                const obsBounds = { left: obs.position.x - 1.9, right: obs.position.x + 1.9, front: obs.position.z - 1.0, back: obs.position.z + 1.0 };
 
                 if (carBounds.right > obsBounds.left && carBounds.left < obsBounds.right && carBounds.back > obsBounds.front && carBounds.front < obsBounds.back) {
                     playCollisionSound();
