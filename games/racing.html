@@ -310,8 +310,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
-    <script type="module">
-        import { VisionClient } from '../js/shared/vision-client.js';
+    <script>
         // ==================== ONE EURO FILTER (Signal Optimization - GĐ 1.1) ====================
         class LowPassFilter {
             constructor(alpha) { this.alpha = alpha; this.initialized = false; this.hatXPrev = 0; }
@@ -679,10 +678,8 @@
             try {
                 updateLoading(10, 'Loading Three.js...');
                 initThreeJS();
-                updateLoading(10, 'Loading Three.js...');
-                initThreeJS();
-                updateLoading(40, 'Starting Vision Worker...');
-                await visionClient.start();
+                updateLoading(40, 'Loading MediaPipe...');
+                await initMediaPipe();
                 updateLoading(70, 'Setting up audio...');
                 initAudio();
                 updateLoading(90, 'Preparing game...');
@@ -843,33 +840,39 @@
         }
 
         // ==================== MEDIAPIPE ====================
-        // ==================== VISION CLIENT ====================
-        // ==================== VISION CLIENT ====================
-        // webcamElement is already declared above
-        const visionClient = new VisionClient(webcamElement);
+        async function initMediaPipe() {
+            return new Promise((resolve, reject) => {
+                try {
+                    hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+                    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+                    hands.onResults(onHandResults);
+                    resolve();
+                } catch (error) { reject(error); }
+            });
+        }
 
-        visionClient.onResult((data) => {
-            const { landmarks, source } = data;
-
-            // Re-map to existing logic structure
-            const results = { multiHandLandmarks: landmarks };
-
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                onHandResults(results); // Reuse existing onHandResults
-            } else {
-                // Reuse existing "lost hands" logic if possible, or implement minimal version
-                // Existing onHandResults handles empty/missing I think?
-                // Let's check onHandResults. It checks if (results... length > 0). 
-                // It has an 'else' block for stabilization.
-                onHandResults({ multiHandLandmarks: [] });
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
+                webcamElement.srcObject = stream;
+                await new Promise(r => { webcamElement.onloadedmetadata = r; });
+                processFrame();
+            } catch (error) {
+                console.error('Camera error:', error);
+                gestureIndicator.textContent = 'Camera Error';
             }
-        });
+        }
 
-        // Deprecated local functions replaced by Worker
-        // async function initMediaPipe() {} 
-        // async function startCamera() {}
-        // async function processFrame() {}
-
+        let lastProcessTime = 0;
+        async function processFrame() {
+            if (!gameState.isPlaying) return;
+            const now = performance.now();
+            if (now - lastProcessTime >= 100) {
+                lastProcessTime = now;
+                try { await hands.send({ image: webcamElement }); } catch (e) { }
+            }
+            requestAnimationFrame(processFrame);
+        }
 
         function onHandResults(results) {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
@@ -990,10 +993,9 @@
             obstacles.forEach(obs => scene.remove(obs));
             obstacles = [];
             car.position.x = 0;
-            // startCamera(); // Handled by VisionClient
+            startCamera();
             startEngineSound();
-            clock.start(); // Start clock for Fixed Time Step
-            gameLoop();
+            animate();
         }
 
         function endGame() {
@@ -1011,68 +1013,34 @@
             // if (webcamElement.srcObject) webcamElement.srcObject.getTracks().forEach(track => track.stop());
         }
 
-        // ==================== FIXED GAME LOOP ====================
-        let accumulator = 0;
-        const TIME_STEP = 1 / 60; // 60 FPS Physics
-
-        function gameLoop() {
+        function animate() {
             if (!gameState.isPlaying) return;
-            requestAnimationFrame(gameLoop);
+            requestAnimationFrame(animate);
 
-            const dt = clock.getDelta();
-            // Cap dt to prevent spiral of death if frame takes too long
-            const frameTime = Math.min(dt, 0.25);
-            accumulator += frameTime;
-
-            while (accumulator >= TIME_STEP) {
-                updatePhysics(TIME_STEP);
-                accumulator -= TIME_STEP;
-            }
-
-            // Render with interpolation context (if we supported state interpolation)
-            // For now, render scene at current state
-            renderer.render(scene, camera);
-        }
-
-        function updatePhysics(dt) {
             const diffSettings = CONFIG.difficulty[gameState.difficulty];
-
-            // Speed Update
             if (gestureData.isAccelerating) gameState.targetSpeed = diffSettings.maxSpeed;
             else if (gestureData.isBraking) gameState.targetSpeed = diffSettings.baseSpeed * 0.3;
             else gameState.targetSpeed = diffSettings.baseSpeed;
+            gameState.speed += (gameState.targetSpeed - gameState.speed) * 0.05;
 
-            // LERP speed dependent on dt (approx)
-            gameState.speed += (gameState.targetSpeed - gameState.speed) * (2.0 * dt);
-
-            // Car Steering
             gameState.targetCarPosition = gestureData.steering * (CONFIG.track.width / 2 - 1);
-            gameState.carPosition += (gameState.targetCarPosition - gameState.carPosition) * (5.0 * dt);
+            gameState.carPosition += (gameState.targetCarPosition - gameState.carPosition) * 0.1;
             car.position.x = gameState.carPosition;
             car.rotation.z = -gestureData.steering * 0.1;
 
-            // Road Lines
             roadLines.forEach(line => {
-                line.position.z += gameState.speed * (dt * 60);
+                line.position.z += gameState.speed;
                 if (line.position.z > 10) line.position.z -= CONFIG.track.length;
             });
 
-            // Obstacle Spawning
-            if (obstacles.length < (diffSettings.maxObstacles || 4)) {
-                // Adjust probability for time step
-                // Old: 0.005 per frame (at 60fps) -> 0.3 per sec
-                // New: 0.3 * dt check? Or keep random?
-                // Random is per tick. Tick is 60Hz. So logic remains similar.
-                if (Math.random() < diffSettings.obstacleFrequency) {
-                    createObstacle();
-                }
+            if (obstacles.length < (diffSettings.maxObstacles || 4) && Math.random() < diffSettings.obstacleFrequency) {
+                createObstacle();
             }
 
-            // Obstacles Update
             for (let i = obstacles.length - 1; i >= 0; i--) {
                 const obs = obstacles[i];
-                obs.position.z += gameState.speed * (dt * 60);
-                obs.rotation.y += 1.0 * dt;
+                obs.position.z += gameState.speed;
+                obs.rotation.y += 0.02;
 
                 if (obs.position.z > 15) {
                     scene.remove(obs);
@@ -1080,24 +1048,15 @@
                     continue;
                 }
 
-                // Collision
                 const carBounds = {
                     left: car.position.x - CONFIG.car.width / 2,
                     right: car.position.x + CONFIG.car.width / 2,
                     front: -CONFIG.car.length / 2,
                     back: CONFIG.car.length / 2
                 };
-                const obsBounds = {
-                    left: obs.position.x - 1.9,
-                    right: obs.position.x + 1.9,
-                    front: obs.position.z - 1.0,
-                    back: obs.position.z + 1.0
-                };
+                const obsBounds = { left: obs.position.x - 1.9, right: obs.position.x + 1.9, front: obs.position.z - 1.0, back: obs.position.z + 1.0 };
 
-                if (carBounds.right > obsBounds.left &&
-                    carBounds.left < obsBounds.right &&
-                    carBounds.back > obsBounds.front &&
-                    carBounds.front < obsBounds.back) {
+                if (carBounds.right > obsBounds.left && carBounds.left < obsBounds.right && carBounds.back > obsBounds.front && carBounds.front < obsBounds.back) {
                     playCollisionSound();
                     scene.remove(obs);
                     obstacles.splice(i, 1);
@@ -1106,18 +1065,15 @@
                 }
             }
 
-            // Score
-            gameState.score += gameState.speed * diffSettings.scoreMultiplier * dt * 10;
+            gameState.score += gameState.speed * diffSettings.scoreMultiplier * 0.5;
             document.getElementById('score-value').textContent = Math.floor(gameState.score);
             document.getElementById('speed-value').textContent = Math.floor(gameState.speed * 100) + ' km/h';
 
-            // Audio Pitch
             if (engineOscillator) {
                 try { engineOscillator.frequency.setValueAtTime(80 + gameState.speed * 150, audioContext.currentTime); } catch (e) { }
             }
-
-            // Camera Shake/Follow
             camera.position.x = Math.sin(Date.now() * 0.01) * gameState.speed * 0.1;
+            renderer.render(scene, camera);
         }
 
         // ==================== EVENT LISTENERS ====================
